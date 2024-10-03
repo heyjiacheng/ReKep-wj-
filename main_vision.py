@@ -12,8 +12,6 @@ from utils import (
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-class test_vision:
-    def __init__
 
 
 class MainVision:
