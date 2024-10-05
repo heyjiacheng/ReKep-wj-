@@ -34,17 +34,40 @@ class MainVision:
             raise FileNotFoundError(f"Image not found at {image_path}")
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
 
+        print(f"Debug: Input image shape: {rgb.shape}")
+
         # Load mask if provided
         if mask_path:
             mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
             if mask is None:
                 raise FileNotFoundError(f"Mask not found at {mask_path}")
+            print(f"Debug: Input mask shape: {mask.shape}")
+            if len(mask.shape) == 3 and mask.shape[2] > 1:
+                mask = mask[:,:,0]  # Use only the first channel if multi-channel
+            print(f"Debug: Processed mask shape: {mask.shape}")
         else:
             mask = None
+            print("Debug: No mask provided")
 
         # Since we don't have point cloud data, we can simulate or omit it
         # For now, we'll set points to None
         points = None
+        # TODO: Add point cloud data from RGBD camera
+          # simulate this from omnigibson
+          # replace env.get_cam_obs() with Mujoco camera observation
+        
+        # Question: simulator or video is fine?
+        # Answer: 
+        # Question: how to turn omnigibson into mujoco?
+        # Answer: 
+        # it seems working on the code is more satisfying than just reading the paper
+        # i should reimplement the part in my own way, as the professor said it is possible
+        # since i am hired by Jason, then i should have ability to solve it independently
+
+        # mujuco  √
+          
+        # dataset 
+        # simulate from Image, Depth estimation 
 
         # ====================================
         # = Keypoint Proposal and Constraint Generation
@@ -59,7 +82,7 @@ class MainVision:
 
     def _show_image(self, image):
         import matplotlib.pyplot as plt
-        plt.imshow(image)
+        # plt.imshow(image)
         plt.axis('off')
         plt.show()
 
