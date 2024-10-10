@@ -156,3 +156,25 @@ class ConstraintGenerator:
         metadata.update(self._parse_other_metadata(output))
         self._save_metadata(metadata)
         return self.task_dir
+
+
+def test_constraint_generation(cg_obj, image_path):
+    rgb = cv2.imread(image_path)
+    if rgb is None:
+        raise FileNotFoundError(f"Image not found at {image_path}")
+    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+    print(f"Debug: Input image shape: {rgb.shape}")
+
+    cg_obj.generate(rgb, "Please generate constraints for the image", {})
+
+
+# unit test
+if __name__ == "__main__":
+    print("Unite Test on Constraint generation")
+    
+    cg_obj = ConstraintGenerator(
+        model="chatgpt-4o-latest",
+        temperature=0.0,        
+        max_tokens=2048
+    )
+    test_constraint_generation(cg_obj, "./point-draw/pen_marked.png")

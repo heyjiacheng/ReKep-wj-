@@ -92,7 +92,7 @@ class MainVision:
 
     def _show_image(self, image):
         import matplotlib.pyplot as plt
-        # plt.imshow(image)
+        plt.imshow(image)
         plt.axis('off')
         plt.show()
 
