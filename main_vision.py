@@ -38,15 +38,25 @@ class MainVision:
 
         # Load mask if provided
         if mask_path:
-            mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-            if mask is None:
-                raise FileNotFoundError(f"Mask not found at {mask_path}")
-            print(f"Debug: Input mask shape: {mask.shape}")
-            if len(mask.shape) == 3 and mask.shape[2] > 1:
-                mask = mask[:,:,0]  # Use only the first channel if multi-channel
-            print(f"Debug: Processed mask shape: {mask.shape}")
+            try:
+                masks = np.load(mask_path)
+                if masks is None:
+                    raise FileNotFoundError(f"Mask not found at {mask_path}")
+                print(f"Debug: Input masks shape: {masks.shape}")
+                
+                # Ensure masks are in the correct format (uint8)
+                masks = masks.astype(np.uint8)
+                
+                # If masks is 2D, expand to 3D
+                if len(masks.shape) == 2:
+                    masks = np.expand_dims(masks, axis=-1)
+                
+                print(f"Debug: Processed masks shape: {masks.shape}")
+            except Exception as e:
+                print(f"Error loading mask: {e}")
+                masks = None
         else:
-            mask = None
+            masks = None
             print("Debug: No mask provided")
 
         # Since we don't have point cloud data, we can simulate or omit it
@@ -72,7 +82,7 @@ class MainVision:
         # ====================================
         # = Keypoint Proposal and Constraint Generation
         # ====================================
-        keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, mask)
+        keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, masks)
         print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
         if self.visualize:
             self._show_image(projected_img)
@@ -90,7 +100,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
     parser.add_argument('--image_path', type=str, required=True, help='Path to the input RGB image')
-    parser.add_argument('--mask_path', type=str, default=None, help='Path to the segmentation mask image (optional)')
+    parser.add_argument('--mask_path', type=str, required=True, help='Path to the segmentation mask')
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
 

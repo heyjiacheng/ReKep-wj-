@@ -1,11 +1,33 @@
-import mujoco
-import numpy as np
+import time
 
-# Load the model from an XML file (e.g., 'humanoid.xml')
-model = mujoco.load_model_from_path('humanoid.xml')
-sim = mujoco.MjSim(model)
+import os
+from openai import OpenAI
 
-# Run the simulation for a few steps
-for i in range(1000):
-    sim.step()
-    print(f"Step {i}:", sim.data.qpos)
+client = OpenAI(
+    # This is the default and can be omitted
+    api_key=os.environ.get("OPENAI_API_KEY"),
+)
+
+chat_completion = client.chat.completions.create(
+    messages=[
+        {
+            "role": "user",
+            "content": "Say this is a test",
+        }
+    ],
+    model="gpt-3.5-turbo",
+)
+
+def rate_limited_api_call(func, *args, **kwargs):
+	max_retries = 5
+	for i in range(max_retries):
+		try:
+			return func(*args, **kwargs)
+		except OpenAI.RateLimitError:
+			if i < max_retries - 1:
+				time.sleep(2 ** i)  # Exponential backoff
+			else:
+				raise
+
+# Use it like this:
+response = rate_limited_api_call(chat_completion, model="gpt-3.5-turbo", messages=[...])

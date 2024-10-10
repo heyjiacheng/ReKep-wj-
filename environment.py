@@ -6,12 +6,22 @@ import transform_utils as T
 import trimesh
 import open3d as o3d
 import imageio
+# OG related
 import omnigibson as og
 from omnigibson.macros import gm
 from omnigibson.utils.usd_utils import PoseAPI, mesh_prim_mesh_to_trimesh_mesh, mesh_prim_shape_to_trimesh_mesh
 from omnigibson.robots.fetch import Fetch
 from omnigibson.controllers import IsGraspingState
+
+
 from og_utils import OGCamera
+from omnigibson.robots.manipulation_robot import ManipulationRobot
+from omnigibson.controllers.controller_base import ControlType, BaseController
+
+# Mujoco related
+import mujoco
+
+
 from utils import (
     bcolors,
     get_clock_time,
@@ -20,9 +30,6 @@ from utils import (
     get_linear_interpolation_steps,
     linear_interpolate_poses,
 )
-from omnigibson.robots.manipulation_robot import ManipulationRobot
-from omnigibson.controllers.controller_base import ControlType, BaseController
-
 # Don't use GPU dynamics and use flatcache for performance boost
 gm.USE_GPU_DYNAMICS = True
 gm.ENABLE_FLATCACHE = False

@@ -174,22 +174,28 @@ def filter_points_by_bounds(points, bounds_min, bounds_max, strict=True):
     """
     Filter points by taking only points within workspace bounds.
     """
-    assert points.shape[1] == 3, "points must be (N, 3)"
-    bounds_min = bounds_min.copy()
-    bounds_max = bounds_max.copy()
-    if not strict:
-        bounds_min[:2] = bounds_min[:2] - 0.1 * (bounds_max[:2] - bounds_min[:2])
-        bounds_max[:2] = bounds_max[:2] + 0.1 * (bounds_max[:2] - bounds_min[:2])
-        bounds_min[2] = bounds_min[2] - 0.1 * (bounds_max[2] - bounds_min[2])
-    within_bounds_mask = (
-        (points[:, 0] >= bounds_min[0])
-        & (points[:, 0] <= bounds_max[0])
-        & (points[:, 1] >= bounds_min[1])
-        & (points[:, 1] <= bounds_max[1])
-        & (points[:, 2] >= bounds_min[2])
-        & (points[:, 2] <= bounds_max[2])
-    )
-    return within_bounds_mask
+    if points is None or len(points) == 0:
+        print("Warning: No points to filter.")
+        return np.array([])
+
+    points = np.array(points)
+    if len(points.shape) == 1:
+        points = points.reshape(1, -1)
+
+    if points.shape[1] != 3:
+        print(f"Warning: Expected points to have 3 dimensions, but got {points.shape[1]}. Returning empty array.")
+        return np.array([])
+
+    within_x = (points[:, 0] >= bounds_min[0]) & (points[:, 0] <= bounds_max[0])
+    within_y = (points[:, 1] >= bounds_min[1]) & (points[:, 1] <= bounds_max[1])
+    within_z = (points[:, 2] >= bounds_min[2]) & (points[:, 2] <= bounds_max[2])
+
+    if strict:
+        within_bounds = within_x & within_y & within_z
+    else:
+        within_bounds = within_x | within_y | within_z
+
+    return points[within_bounds]
 
 def print_opt_debug_dict(debug_dict):
     print('\n' + '#' * 40)
