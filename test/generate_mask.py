@@ -28,6 +28,20 @@ mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera
 masks = mask_generator.generate(image)
 print(len(masks))
 print(masks[0].keys())
+
+
+# Automated Mask (Instance Segmentation) Generation with SAM
+# To generate masks automatically, use the SamAutomaticMaskGenerator. This utility generates a list of dictionaries describing individual segmentations. Each dict in the result list has the following format:
+
+#     segmentation - [np.ndarray] - the mask with (W, H) shape, and bool type, where W and H are the width and height of the original image, respectively
+#     area - [int] - the area of the mask in pixels
+#     bbox - [List[int]] - the boundary box detection in xywh format
+#     predicted_iou - [float] - the model's own prediction for the quality of the mask
+#     point_coords - [List[List[float]]] - the sampled input point that generated this mask
+#     stability_score - [float] - an additional measure of mask quality
+#     crop_box - List[int] - the crop of the image used to generate this mask in xywh format
+
+
 pdb.set_trace()
 # Create output directory
 img_name = os.path.splitext(os.path.basename(img_path))[0]
@@ -35,7 +49,7 @@ output_dir = f'./data/mask/{img_name}_sam2'
 os.makedirs(output_dir, exist_ok=True)
 
 # Convert masks to uint8 and stack them
-masks_uint8 = np.stack([(mask > 0.5).astype(np.uint8) for mask in masks['segmentation'], axis=-1)
+masks_uint8 = np.stack([mask['segmentation'].astype(np.uint8) for mask in masks], axis=-1)
 
 # Save masks as a single .npy file
 masks_path = os.path.join(output_dir, f'{img_name}_masks.npy')
