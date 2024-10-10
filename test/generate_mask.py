@@ -45,7 +45,7 @@ print(masks[0].keys())
 pdb.set_trace()
 # Create output directory
 img_name = os.path.splitext(os.path.basename(img_path))[0]
-output_dir = f'./data/mask/{img_name}_sam2'
+output_dir = f'/home/tonyw/VLM/ReKep/data/mask/{img_name}_sam2'
 os.makedirs(output_dir, exist_ok=True)
 
 # Convert masks to uint8 and stack them

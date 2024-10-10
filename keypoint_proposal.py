@@ -21,12 +21,6 @@ class KeypointProposer:
         torch.cuda.manual_seed(self.config['seed'])
 
     def get_keypoints(self, rgb, points, masks=None):
-        # Ensure masks is in the correct format (if provided)
-        if masks is not None:
-            masks = masks.astype(np.uint8)  # Ensure masks is uint8
-            if len(masks.shape) == 3 and masks.shape[2] > 1:
-                masks = masks[:,:,0]  # Use only the first channel if multi-channel
-        
 
         # preprocessing
         transformed_rgb, rgb, points, masks, shape_info = self._preprocess(rgb, points, masks)
@@ -69,8 +63,9 @@ class KeypointProposer:
 
     def _preprocess(self, rgb, points, masks):
         # convert masks to binary masks
-        masks = [masks == uid for uid in np.unique(masks)]
-        pdb.set_trace()
+        # masks = [masks == uid for uid in np.unique(masks)]
+
+        # pdb.set_trace()
         # ensure input shape is compatible with dinov2
         H, W, _ = rgb.shape
         patch_h = int(H // self.patch_size)
@@ -130,33 +125,24 @@ class KeypointProposer:
         return features_flat
 
     def _cluster_features(self, points, features_flat, masks):
+        # TEST: points is always None
         candidate_keypoints = []
         candidate_pixels = []
         candidate_rigid_group_ids = []
-        for rigid_group_id, binary_mask in enumerate(masks):
+        for rigid_group_id, binary_mask in enumerate(masks):   
+
             # ignore mask that is too large
             if np.mean(binary_mask) > self.config['max_mask_ratio']:
                 continue
-
-            # Resize the mask to match the feature map size
-            feature_map_size = int(np.sqrt(features_flat.shape[0]))
-            resized_mask = cv2.resize(binary_mask, (feature_map_size, feature_map_size), interpolation=cv2.INTER_NEAREST)
-            
-            # Flatten the resized mask
-            binary_mask = resized_mask.reshape(-1) > 0
-            # Now use the resized mask
-            obj_features_flat = features_flat[binary_mask]
-
-            print(f"Debug: features_flat shape: {features_flat.shape}")
-            print(f"Debug: binary_mask shape: {binary_mask.shape}")
-            print(f"Debug: obj_features_flat shape: {obj_features_flat.shape}")
-
-            if obj_features_flat.shape[0] == 0:
-                print("Warning: No features selected by the mask. Check if the mask is correct.")
-                return [], [], []
-
+            # consider only foreground features
+            obj_features_flat = features_flat[binary_mask.reshape(-1)]
             feature_pixels = np.argwhere(binary_mask)
             feature_points = points[binary_mask]
+            print(f"Debug: feature_points shape: {feature_points.shape}")
+            print(f"Debug: feature_pixels shape: {feature_pixels.shape}")
+            print(f"Debug: obj_features_flat shape: {obj_features_flat.shape}")
+
+
             # reduce dimensionality to be less sensitive to noise and texture
             obj_features_flat = obj_features_flat.double()
             (u, s, v) = torch.pca_lowrank(obj_features_flat, center=False)
@@ -167,6 +153,8 @@ class KeypointProposer:
             feature_points_torch = torch.tensor(feature_points, dtype=features_pca.dtype, device=features_pca.device)
             feature_points_torch  = (feature_points_torch - feature_points_torch.min(0)[0]) / (feature_points_torch.max(0)[0] - feature_points_torch.min(0)[0])
             X = torch.cat([X, feature_points_torch], dim=-1)
+            
+            
             # cluster features to get meaningful regions
             cluster_ids_x, cluster_centers = kmeans(
                 X=X,
@@ -175,7 +163,7 @@ class KeypointProposer:
                 device=self.device,
             )
             cluster_centers = cluster_centers.to(self.device)
-            for cluster_id in range(self.config['num_candidates_per_mask']):
+            for cluster_id in range(self.config['num_candidates_per_mask']): # 5
                 cluster_center = cluster_centers[cluster_id][:3]
                 member_idx = cluster_ids_x == cluster_id
                 member_points = feature_points[member_idx]

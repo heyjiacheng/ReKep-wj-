@@ -5,6 +5,8 @@ import cv2
 import os
 from keypoint_proposal import KeypointProposer
 from constraint_generation import ConstraintGenerator
+from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+
 from utils import (
     bcolors,
     get_config,
@@ -26,8 +28,9 @@ class MainVision:
         # Initialize keypoint proposer and constraint generator
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
-
-    def perform_task(self, instruction, image_path, mask_path=None):
+        self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-large")
+    
+    def perform_task(self, instruction, image_path):
         # Load image
         rgb = cv2.imread(image_path)
         if rgb is None:
@@ -36,48 +39,17 @@ class MainVision:
 
         print(f"Debug: Input image shape: {rgb.shape}")
 
-        # Load mask if provided
-        if mask_path:
-            try:
-                masks = np.load(mask_path)
-                if masks is None:
-                    raise FileNotFoundError(f"Mask not found at {mask_path}")
-                print(f"Debug: Input masks shape: {masks.shape}")
-                
-                # Ensure masks are in the correct format (uint8)
-                masks = masks.astype(np.uint8)
-                
-                # If masks is 2D, expand to 3D
-                if len(masks.shape) == 2:
-                    masks = np.expand_dims(masks, axis=-1)
-                
-                print(f"Debug: Processed masks shape: {masks.shape}")
-            except Exception as e:
-                print(f"Error loading mask: {e}")
-                masks = None
-        else:
-            masks = None
-            print("Debug: No mask provided")
-
+        # Generate masks
+        masks_dict = self.mask_generator.generate(rgb)
+        masks = [m['segmentation'] for m in masks_dict]
+        print(f"Debug: Generated {len(masks)} masks")
+       
         # Since we don't have point cloud data, we can simulate or omit it
         # For now, we'll set points to None
         points = None
-        # TODO: Add point cloud data from RGBD camera
-          # simulate this from omnigibson
-          # replace env.get_cam_obs() with Mujoco camera observation
-        
-        # Question: simulator or video is fine?
-        # Answer: 
-        # Question: how to turn omnigibson into mujoco?
-        # Answer: 
-        # it seems working on the code is more satisfying than just reading the paper
-        # i should reimplement the part in my own way, as the professor said it is possible
-        # since i am hired by Jason, then i should have ability to solve it independently
+        # TODO: Add point cloud data from Dense estimation model 
+        # replace env.get_cam_obs() with Mujoco camera observation
 
-        # mujuco  √
-          
-        # dataset 
-        # simulate from Image, Depth estimation 
 
         # ====================================
         # = Keypoint Proposal and Constraint Generation
@@ -100,9 +72,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
     parser.add_argument('--image_path', type=str, required=True, help='Path to the input RGB image')
-    parser.add_argument('--mask_path', type=str, required=True, help='Path to the segmentation mask')
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
 
     main = MainVision(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, image_path=args.image_path, mask_path=args.mask_path)
+    main.perform_task(instruction=args.instruction, image_path=args.image_path)
