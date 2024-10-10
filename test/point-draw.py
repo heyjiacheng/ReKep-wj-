@@ -22,12 +22,11 @@ def resize_image(image, max_width=1280, max_height=720):
 def mouse_callback(event, x, y, flags, param):
     global counter, drawing, scale_factor
     if event == cv2.EVENT_LBUTTONDOWN and drawing:
-        # 将缩放后的坐标转换回原始图像坐标
+
         original_x = int(x / scale_factor)
         original_y = int(y / scale_factor)
         points.append((original_x, original_y))
         
-        # draw text and circle
         text = str(counter)
         font_scale = 1
         font_thickness = 2
