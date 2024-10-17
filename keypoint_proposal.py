@@ -10,7 +10,6 @@ class KeypointProposer:
     def __init__(self, config):
         self.config = config
         self.device = torch.device(self.config['device'])
-        # without registor version  
         self.dinov2 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').eval().to(self.device)
         self.bounds_min = np.array(self.config['bounds_min'])
         self.bounds_max = np.array(self.config['bounds_max'])
@@ -20,32 +19,19 @@ class KeypointProposer:
         torch.manual_seed(self.config['seed'])
         torch.cuda.manual_seed(self.config['seed'])
 
-    def get_keypoints(self, rgb, points, masks=None):
-
+    def get_keypoints(self, rgb, points, masks):
         # preprocessing
         transformed_rgb, rgb, points, masks, shape_info = self._preprocess(rgb, points, masks)
         # get features
         features_flat = self._get_features(transformed_rgb, shape_info)
-        # for each masks, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
+        # for each mask, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
         candidate_keypoints, candidate_pixels, candidate_rigid_group_ids = self._cluster_features(points, features_flat, masks)
-
-        print(f"Debug: candidate_keypoints shape: {np.array(candidate_keypoints).shape}")
-        print(f"Debug: First few candidate_keypoints: {np.array(candidate_keypoints)[:5]}")
-
-        if len(candidate_keypoints) == 0:
-            print("Warning: No candidate keypoints generated. Returning empty arrays.")
-            return [], rgb  # Return empty keypoints and original image
-
+        if 0:
         # exclude keypoints that are outside of the workspace
-        within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=False)
-
-        if len(within_space) == 0:
-            print("Warning: No keypoints within specified bounds. Returning all candidate keypoints.")
-            within_space = np.arange(len(candidate_keypoints))
-
-        candidate_keypoints = np.array(candidate_keypoints)[within_space]
-        candidate_pixels = np.array(candidate_pixels)[within_space]
-        candidate_rigid_group_ids = np.array(candidate_rigid_group_ids)[within_space]
+            within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=True)
+            candidate_keypoints = candidate_keypoints[within_space]
+            candidate_pixels = candidate_pixels[within_space]
+            candidate_rigid_group_ids = candidate_rigid_group_ids[within_space]
         # merge close points by clustering in cartesian space
         merged_indices = self._merge_clusters(candidate_keypoints)
         candidate_keypoints = candidate_keypoints[merged_indices]
@@ -58,7 +44,6 @@ class KeypointProposer:
         candidate_rigid_group_ids = candidate_rigid_group_ids[sort_idx]
         # project keypoints to image space
         projected = self._project_keypoints_to_img(rgb, candidate_pixels, candidate_rigid_group_ids, masks, features_flat)
-        pdb.set_trace()
         return candidate_keypoints, projected
 
     def _preprocess(self, rgb, points, masks):
@@ -104,45 +89,54 @@ class KeypointProposer:
     @torch.inference_mode()
     @torch.amp.autocast('cuda')
     def _get_features(self, transformed_rgb, shape_info):
-        # (705, 946, 3)
-        img_h = shape_info['img_h'] 
+        img_h = shape_info['img_h']
         img_w = shape_info['img_w']
         patch_h = shape_info['patch_h']
         patch_w = shape_info['patch_w']
+
+        print(f"Debug: shape_info: {shape_info}")
+        print(f"Debug: transformed_rgb shape: {transformed_rgb.shape}")
+
         # get features
         img_tensors = torch.from_numpy(transformed_rgb).permute(2, 0, 1).unsqueeze(0).to(self.device)  # float32 [1, 3, H, W]
         assert img_tensors.shape[1] == 3, "unexpected image shape"
         
         features_dict = self.dinov2.forward_features(img_tensors) # dict_keys(['x_norm_clstoken', 'x_norm_regtokens', 'x_norm_patchtokens', 'x_prenorm', 'masks'])
-        pdb.set_trace()
         raw_feature_grid = features_dict['x_norm_patchtokens']  # float32 [num_cams, patch_h*patch_w, feature_dim] 
-        raw_feature_grid = raw_feature_grid.reshape(1, patch_h, patch_w, -1)  # float32 [num_cams, patch_h, patch_w, feature_dim] , torch.Size([1, 50, 67, 384])
+        raw_feature_grid = raw_feature_grid.reshape(1, patch_h, patch_w, -1)  # float32 [num_cams, patch_h, patch_w, feature_dim]
         # compute per-point feature using bilinear interpolation
         interpolated_feature_grid = interpolate(raw_feature_grid.permute(0, 3, 1, 2),  # float32 [num_cams, feature_dim, patch_h, patch_w]
                                                 size=(img_h, img_w),
                                                 mode='bilinear').permute(0, 2, 3, 1).squeeze(0)  # float32 [H, W, feature_dim]
+        print(f"Debug: interpolated_feature_grid shape: {interpolated_feature_grid.shape}")
         features_flat = interpolated_feature_grid.reshape(-1, interpolated_feature_grid.shape[-1])  # float32 [H*W, feature_dim]
+        print(f"Debug: features_flat shape: {features_flat.shape}")
         return features_flat
 
     def _cluster_features(self, points, features_flat, masks):
-        # TEST: points is always None
         candidate_keypoints = []
         candidate_pixels = []
         candidate_rigid_group_ids = []
-        for rigid_group_id, binary_mask in enumerate(masks):   
 
+        print(f"Debug: points shape: {points.shape}")
+        print(f"Debug: features_flat shape: {features_flat.shape}")
+        print(f"Debug: number of mask groups: {len(masks)}")
+        print(f"Debug: shape of first mask group: {masks[0].shape}")
+        if len(masks) > 0:
+            print(f"Debug: shape of first mask: {masks[0].shape}")
+            
+        for rigid_group_id, binary_mask in enumerate(masks):   
+            # for mask_id in range(masks_group.shape[0]): # bug: masks_group is a single mask, not a list of masks
             # ignore mask that is too large
             if np.mean(binary_mask) > self.config['max_mask_ratio']:
                 continue
             # consider only foreground features
             obj_features_flat = features_flat[binary_mask.reshape(-1)]
             feature_pixels = np.argwhere(binary_mask)
-            feature_points = points[binary_mask]
+            feature_points = points[binary_mask.reshape(-1)]
             print(f"Debug: feature_points shape: {feature_points.shape}")
             print(f"Debug: feature_pixels shape: {feature_pixels.shape}")
             print(f"Debug: obj_features_flat shape: {obj_features_flat.shape}")
-
-
             # reduce dimensionality to be less sensitive to noise and texture
             obj_features_flat = obj_features_flat.double()
             (u, s, v) = torch.pca_lowrank(obj_features_flat, center=False)
@@ -153,8 +147,6 @@ class KeypointProposer:
             feature_points_torch = torch.tensor(feature_points, dtype=features_pca.dtype, device=features_pca.device)
             feature_points_torch  = (feature_points_torch - feature_points_torch.min(0)[0]) / (feature_points_torch.max(0)[0] - feature_points_torch.min(0)[0])
             X = torch.cat([X, feature_points_torch], dim=-1)
-            
-            
             # cluster features to get meaningful regions
             cluster_ids_x, cluster_centers = kmeans(
                 X=X,
@@ -181,6 +173,7 @@ class KeypointProposer:
 
         print(f"Debug: Number of clusters: {self.config['num_candidates_per_mask']}")
         print(f"Debug: Number of candidate keypoints: {len(candidate_keypoints)}")
+        pdb.set_trace()
 
         return candidate_keypoints, candidate_pixels, candidate_rigid_group_ids
 

@@ -1,4 +1,5 @@
 python main_vision.py \
-    --instruction "Pick up the white pen and drop it upright into the black pen holder" \
-    --image_path "./data/pen.png" \
+    --instruction "Open the oven with robot arm" \
+    --data_path "./data/rgbd/825312071880" \
+    --frame_number 410 \
     --visualize
