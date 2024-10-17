@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib
 import cv2
 import transform_utils as T
-from utils import filter_points_by_bounds, batch_transform_points
+from .utils import filter_points_by_bounds, batch_transform_points
 
 def add_to_visualize_buffer(visualize_buffer, visualize_points, visualize_colors):
     assert visualize_points.shape[0] == visualize_colors.shape[0], f'got {visualize_points.shape[0]} for points and {visualize_colors.shape[0]} for colors'

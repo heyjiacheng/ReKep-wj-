@@ -1,20 +1,20 @@
+import os
 import torch
 import numpy as np
 import argparse
-import cv2
-import os
-from keypoint_proposal import KeypointProposer
-from constraint_generation import ConstraintGenerator
-from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 import pyrealsense2 as rs
-from utils import (
+
+from rekep.keypoint_proposal import KeypointProposer
+from rekep.constraint_generation import ConstraintGenerator
+from rekep.utils import (
     bcolors,
     get_config,
 )
+from sam2.build_sam import build_sam2
+from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
-
-
 
 class MainVision:
     def __init__(self, visualize=False):
@@ -28,8 +28,22 @@ class MainVision:
         # Initialize keypoint proposer and constraint generator
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
-        self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-large")
+        self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
         self.intrinsics = self.load_camera_intrinsics()
+        # sam2_model = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-large")
+        # self.mask_generator = SAM2AutomaticMaskGenerator(
+        #     model = sam2_model,
+        #     points_per_side=64,
+        #     points_per_batch=128,
+        #     pred_iou_thresh=0.7,
+        #     stability_score_thresh=0.92,
+        #     stability_score_offset=0.7,
+        #     crop_n_layers=1,
+        #     box_nms_thresh=0.7,
+        #     crop_n_points_downscale_factor=2,
+        #     min_mask_region_area=25.0,
+        #     use_m2m=True,
+        # )
 
     def load_camera_intrinsics(self):
         # Load the JSON file containing the camera calibration
@@ -93,10 +107,7 @@ class MainVision:
         print(f"Debug: Generated {len(masks)} masks")
         print(f"Debug: masks shape: {masks[0].shape}")
         print(f"Debug: Type of masks: {type(masks)}")
-        # Since we don't have point cloud data, we can simulate or omit it
-        # For now, we'll set points to None
-        # points = None
-        # TODO: Add point cloud data from Dense estimation model 
+        # TODO: Add point cloud data from DepthPro model 
         # replace env.get_cam_obs() with Mujoco camera observation
 
         # Generate point cloud from depth image
@@ -112,12 +123,27 @@ class MainVision:
         metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
         rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
-
     def _show_image(self, image):
+        # Save the annotated image with keypoints
         import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 8))
         plt.imshow(image)
-        plt.axis('off')
-        plt.show()
+        plt.axis('on')
+        plt.title('Annotated Image with Keypoints')
+        plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
+        plt.close()
+
+        # Save the image with SAM2 masks
+        masks = self.mask_generator.generate(image)
+        plt.figure(figsize=(10, 8))
+        plt.imshow(image)
+        for mask in masks:
+            plt.contour(mask['segmentation'], colors='r', linewidths=0.5, alpha=0.7)
+        plt.axis('on')
+        plt.title('Image with SAM2 Masks')
+        plt.savefig('data/rekep_with_masks.png', bbox_inches='tight', dpi=300)
+        plt.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

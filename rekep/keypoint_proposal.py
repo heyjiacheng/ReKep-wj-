@@ -3,7 +3,7 @@ import torch
 import cv2
 from torch.nn.functional import interpolate
 from kmeans_pytorch import kmeans
-from utils import filter_points_by_bounds
+from .utils import filter_points_by_bounds
 from sklearn.cluster import MeanShift
 import pdb
 class KeypointProposer:
@@ -26,9 +26,15 @@ class KeypointProposer:
         features_flat = self._get_features(transformed_rgb, shape_info)
         # for each mask, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
         candidate_keypoints, candidate_pixels, candidate_rigid_group_ids = self._cluster_features(points, features_flat, masks)
-        if 0:
+        
+        if 1:
         # exclude keypoints that are outside of the workspace
-            within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=True)
+            # within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=False)
+            pdb.set_trace()
+            filtered_keypoints = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=False)
+            # Create a boolean mask for the filtered keypoints
+            within_space = np.array([np.any(np.all(candidate_keypoints[i] == filtered_keypoints, axis=1)) for i in range(len(candidate_keypoints))])
+    
             candidate_keypoints = candidate_keypoints[within_space]
             candidate_pixels = candidate_pixels[within_space]
             candidate_rigid_group_ids = candidate_rigid_group_ids[within_space]
@@ -118,10 +124,6 @@ class KeypointProposer:
         candidate_pixels = []
         candidate_rigid_group_ids = []
 
-        print(f"Debug: points shape: {points.shape}")
-        print(f"Debug: features_flat shape: {features_flat.shape}")
-        print(f"Debug: number of mask groups: {len(masks)}")
-        print(f"Debug: shape of first mask group: {masks[0].shape}")
         if len(masks) > 0:
             print(f"Debug: shape of first mask: {masks[0].shape}")
             
@@ -134,9 +136,7 @@ class KeypointProposer:
             obj_features_flat = features_flat[binary_mask.reshape(-1)]
             feature_pixels = np.argwhere(binary_mask)
             feature_points = points[binary_mask.reshape(-1)]
-            print(f"Debug: feature_points shape: {feature_points.shape}")
-            print(f"Debug: feature_pixels shape: {feature_pixels.shape}")
-            print(f"Debug: obj_features_flat shape: {obj_features_flat.shape}")
+        
             # reduce dimensionality to be less sensitive to noise and texture
             obj_features_flat = obj_features_flat.double()
             (u, s, v) = torch.pca_lowrank(obj_features_flat, center=False)
@@ -173,7 +173,7 @@ class KeypointProposer:
 
         print(f"Debug: Number of clusters: {self.config['num_candidates_per_mask']}")
         print(f"Debug: Number of candidate keypoints: {len(candidate_keypoints)}")
-        pdb.set_trace()
+        # pdb.set_trace()
 
         return candidate_keypoints, candidate_pixels, candidate_rigid_group_ids
 

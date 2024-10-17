@@ -7,7 +7,7 @@ import scipy.interpolate as interpolate
 from scipy.spatial.transform import Slerp
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import RotationSpline
-import transform_utils as T
+from . import transform_utils as T
 import yaml
 
 # ===============================================
@@ -170,6 +170,7 @@ def angle_between_quats(q1, q2):
     """Angle between two quaternions"""
     return 2 * np.arccos(np.clip(np.abs(np.dot(q1, q2)), -1, 1))
 
+
 def filter_points_by_bounds(points, bounds_min, bounds_max, strict=True):
     """
     Filter points by taking only points within workspace bounds.
@@ -196,6 +197,32 @@ def filter_points_by_bounds(points, bounds_min, bounds_max, strict=True):
         within_bounds = within_x | within_y | within_z
 
     return points[within_bounds]
+# def filter_points_by_bounds(points, bounds_min, bounds_max, strict=True):
+#     """
+#     Filter points by taking only points within workspace bounds.
+#     """
+#     if points is None or len(points) == 0:
+#         print("Warning: No points to filter.")
+#         return np.array([])
+
+#     points = np.array(points)
+#     if len(points.shape) == 1:
+#         points = points.reshape(1, -1)
+
+#     if points.shape[1] != 3:
+#         print(f"Warning: Expected points to have 3 dimensions, but got {points.shape[1]}. Returning empty array.")
+#         return np.array([])
+
+#     within_x = (points[:, 0] >= bounds_min[0]) & (points[:, 0] <= bounds_max[0])
+#     within_y = (points[:, 1] >= bounds_min[1]) & (points[:, 1] <= bounds_max[1])
+#     within_z = (points[:, 2] >= bounds_min[2]) & (points[:, 2] <= bounds_max[2])
+
+#     if strict:
+#         within_bounds = within_x & within_y & within_z
+#     else:
+#         within_bounds = within_x | within_y | within_z
+
+#     return points[within_bounds]
 
 def print_opt_debug_dict(debug_dict):
     print('\n' + '#' * 40)
