@@ -6,6 +6,42 @@ from kmeans_pytorch import kmeans
 from .utils import filter_points_by_bounds
 from sklearn.cluster import MeanShift
 import pdb
+
+def check_nan(array, name="Array"):
+    """
+    Check for NaN values in a numpy array or PyTorch tensor.
+    
+    Args:
+    array (np.ndarray or torch.Tensor): The array to check
+    name (str): A name for the array (for reporting purposes)
+    
+    Returns:
+    bool: True if NaNs are present, False otherwise
+    """
+    if isinstance(array, np.ndarray):
+        has_nans = np.isnan(array).any()
+        nan_count = np.isnan(array).sum()
+        inf_count = np.isinf(array).sum()
+    elif isinstance(array, torch.Tensor):
+        has_nans = torch.isnan(array).any().item()
+        nan_count = torch.isnan(array).sum().item()
+        inf_count = torch.isinf(array).sum().item()
+    else:
+        raise TypeError(f"Unsupported type: {type(array)}")
+    
+    if has_nans:
+        print(f"{name} contains {nan_count} NaN values and {inf_count} infinity values.")
+        if isinstance(array, np.ndarray):
+            print(f"Array shape: {array.shape}, dtype: {array.dtype}")
+        else:
+            print(f"Tensor shape: {array.shape}, dtype: {array.dtype}, device: {array.device}")
+        return True
+    else:
+        print(f"{name} does not contain any NaN values.")
+        return False
+
+
+
 class KeypointProposer:
     def __init__(self, config):
         self.config = config
@@ -30,7 +66,7 @@ class KeypointProposer:
         if 1:
         # exclude keypoints that are outside of the workspace
             # within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=False)
-            pdb.set_trace()
+            # pdb.set_trace()
             filtered_keypoints = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=False)
             # Create a boolean mask for the filtered keypoints
             within_space = np.array([np.any(np.all(candidate_keypoints[i] == filtered_keypoints, axis=1)) for i in range(len(candidate_keypoints))])
@@ -155,7 +191,7 @@ class KeypointProposer:
                 device=self.device,
             )
             cluster_centers = cluster_centers.to(self.device)
-            for cluster_id in range(self.config['num_candidates_per_mask']): # 5
+            for cluster_id in range(3 ):#self.config['num_candidates_per_mask']): # 5
                 cluster_center = cluster_centers[cluster_id][:3]
                 member_idx = cluster_ids_x == cluster_id
                 member_points = feature_points[member_idx]

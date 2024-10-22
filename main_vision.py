@@ -3,6 +3,8 @@ import torch
 import numpy as np
 import argparse
 import pyrealsense2 as rs
+import supervision as sv
+import cv2
 
 from rekep.keypoint_proposal import KeypointProposer
 from rekep.constraint_generation import ConstraintGenerator
@@ -30,20 +32,6 @@ class MainVision:
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
         self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
         self.intrinsics = self.load_camera_intrinsics()
-        # sam2_model = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-large")
-        # self.mask_generator = SAM2AutomaticMaskGenerator(
-        #     model = sam2_model,
-        #     points_per_side=64,
-        #     points_per_batch=128,
-        #     pred_iou_thresh=0.7,
-        #     stability_score_thresh=0.92,
-        #     stability_score_offset=0.7,
-        #     crop_n_layers=1,
-        #     box_nms_thresh=0.7,
-        #     crop_n_points_downscale_factor=2,
-        #     min_mask_region_area=25.0,
-        #     use_m2m=True,
-        # )
 
     def load_camera_intrinsics(self):
         # Load the JSON file containing the camera calibration
@@ -89,7 +77,7 @@ class MainVision:
     
     def perform_task(self, instruction, data_path, frame_number):
         # Load color and depth images
-        color_path = os.path.join(data_path, f'color_{frame_number:06d}.npy')
+        color_path = os.path.join(data_path, f'rgb_{frame_number:06d}.npy')
         depth_path = os.path.join(data_path, f'depth_{frame_number:06d}.npy')
 
         if not os.path.exists(color_path) or not os.path.exists(depth_path):
@@ -119,30 +107,36 @@ class MainVision:
         keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, masks)
         print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
         if self.visualize:
-            self._show_image(projected_img)
+            self._show_image(projected_img,rgb,masks_dict)
         metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
         rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
-    def _show_image(self, image):
+
+        
+
+
+    def _show_image(self, idx_img, rgb, masks):
         # Save the annotated image with keypoints
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10, 8))
-        plt.imshow(image)
+        plt.imshow(idx_img)
         plt.axis('on')
         plt.title('Annotated Image with Keypoints')
         plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
         plt.close()
 
-        # Save the image with SAM2 masks
-        masks = self.mask_generator.generate(image)
-        plt.figure(figsize=(10, 8))
-        plt.imshow(image)
-        for mask in masks:
-            plt.contour(mask['segmentation'], colors='r', linewidths=0.5, alpha=0.7)
-        plt.axis('on')
-        plt.title('Image with SAM2 Masks')
-        plt.savefig('data/rekep_with_masks.png', bbox_inches='tight', dpi=300)
-        plt.close()
+        # Save the image with SAM2 masks using supervision
+        rgb_cv2 = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        mask_annotator = sv.MaskAnnotator(        )
+
+        detections = sv.Detections.from_sam(masks)
+
+        annotated_frame = mask_annotator.annotate(
+            scene=rgb_cv2.copy(),
+            detections=detections
+        )
+
+        cv2.imwrite('data/rekep_with_masks_50_discrepancy.png', annotated_frame)
 
 
 if __name__ == "__main__":

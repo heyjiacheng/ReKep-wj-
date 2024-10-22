@@ -1,5 +1,5 @@
 python main_vision.py \
-    --instruction "Open the oven with robot arm" \
-    --data_path "./data/rgbd/825312071880" \
-    --frame_number 3 \
+    --instruction "Pick up the white pen and drop it upright into the center of the blue bowl" \
+    --data_path "data/rgbd/bowl-pen/" \
+    --frame_number 60 \
     --visualize
