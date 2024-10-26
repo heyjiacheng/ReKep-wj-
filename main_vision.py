@@ -40,7 +40,6 @@ class MainVision:
         pipeline_wrapper = rs.pipeline_wrapper(pipeline)
         pipeline_profile = config.resolve(pipeline_wrapper)
         device = pipeline_profile.get_device()
-        device_product_line = str(device.get_info(rs.camera_info.product_line))
 
         config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
@@ -58,6 +57,7 @@ class MainVision:
         return intrinsics, depth_scale
 
     def depth_to_pointcloud(self, depth):
+        # TODO: check if this is correct
         intrinsics, depth_scale = self.intrinsics
 
         height, width = depth.shape
@@ -76,8 +76,8 @@ class MainVision:
         return points    
     
     def perform_task(self, instruction, data_path, frame_number):
-        # Load color and depth images
-        color_path = os.path.join(data_path, f'rgb_{frame_number:06d}.npy')
+        # BUG: name for  color is not consistent
+        color_path = os.path.join(data_path, f'color_{frame_number:06d}.npy')
         depth_path = os.path.join(data_path, f'depth_{frame_number:06d}.npy')
 
         if not os.path.exists(color_path) or not os.path.exists(depth_path):

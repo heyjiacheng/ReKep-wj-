@@ -6,7 +6,7 @@ main:
   interpolate_rot_step_size: &interpolate_rot_step_size 0.34  # about 20 degrees
   grasp_depth: 0.10
   constraint_tolerance: 0.10  # for backtracking
-  bounds_min: &bounds_min [-0.45, -0.75, 0.698]
+  bounds_min: &bounds_min [-0.45, -0.75, 0.698] # how to encode the workspace?
   bounds_max: &bounds_max [0.10, 0.60, 1.2]
   sdf_voxel_size: 0.01
   vlm_camera: 0

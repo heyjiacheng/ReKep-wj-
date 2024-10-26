@@ -5,6 +5,9 @@ from torch.nn.functional import interpolate
 from kmeans_pytorch import kmeans
 from .utils import filter_points_by_bounds
 from sklearn.cluster import MeanShift
+
+from sklearn.cluster import DBSCAN
+
 import pdb
 
 def check_nan(array, name="Array"):
@@ -74,8 +77,10 @@ class KeypointProposer:
             candidate_keypoints = candidate_keypoints[within_space]
             candidate_pixels = candidate_pixels[within_space]
             candidate_rigid_group_ids = candidate_rigid_group_ids[within_space]
+
         # merge close points by clustering in cartesian space
         merged_indices = self._merge_clusters(candidate_keypoints)
+
         candidate_keypoints = candidate_keypoints[merged_indices]
         candidate_pixels = candidate_pixels[merged_indices]
         candidate_rigid_group_ids = candidate_rigid_group_ids[merged_indices]
@@ -89,10 +94,7 @@ class KeypointProposer:
         return candidate_keypoints, projected
 
     def _preprocess(self, rgb, points, masks):
-        # convert masks to binary masks
-        # masks = [masks == uid for uid in np.unique(masks)]
-
-        # pdb.set_trace()
+        # input masks should be binary masks
         # ensure input shape is compatible with dinov2
         H, W, _ = rgb.shape
         patch_h = int(H // self.patch_size)
@@ -159,7 +161,7 @@ class KeypointProposer:
         candidate_keypoints = []
         candidate_pixels = []
         candidate_rigid_group_ids = []
-
+        # pdb.set_trace()
         if len(masks) > 0:
             print(f"Debug: shape of first mask: {masks[0].shape}")
             
@@ -191,14 +193,20 @@ class KeypointProposer:
                 device=self.device,
             )
             cluster_centers = cluster_centers.to(self.device)
-            for cluster_id in range(3 ):#self.config['num_candidates_per_mask']): # 5
-                cluster_center = cluster_centers[cluster_id][:3]
+            for cluster_id in range(self.config['num_candidates_per_mask']): # 5
                 member_idx = cluster_ids_x == cluster_id
                 member_points = feature_points[member_idx]
                 member_pixels = feature_pixels[member_idx]
+
+
+                # pdb.set_trace()
                 member_features = features_pca[member_idx]
+                cluster_center = cluster_centers[cluster_id][:3]
                 dist = torch.norm(member_features - cluster_center, dim=-1)
                 closest_idx = torch.argmin(dist)
+                # Skip clusters with no members or all zero coordinates
+                if len(member_points[closest_idx]) == 0 or np.all(member_points[closest_idx] == 0):
+                    continue
                 candidate_keypoints.append(member_points[closest_idx])
                 candidate_pixels.append(member_pixels[closest_idx])
                 candidate_rigid_group_ids.append(rigid_group_id)
@@ -221,3 +229,27 @@ class KeypointProposer:
             dist = np.linalg.norm(candidate_keypoints - center, axis=-1)
             merged_indices.append(np.argmin(dist))
         return merged_indices
+    
+
+    # def _merge_clusters(self, candidate_keypoints, eps=0.5, min_samples=2):
+    #     points = np.array(candidate_keypoints)
+        
+    #     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    #     labels = dbscan.fit_predict(points)
+        
+    #     merged_indices = []
+    #     for label in np.unique(labels):
+    #         if label == -1:  # skip noise points
+    #             continue
+            
+    #         cluster_points = points[labels == label]
+    #         cluster_center = np.mean(cluster_points, axis=0)
+            
+    #         # choose points near the center
+    #         distances = np.linalg.norm(cluster_points - cluster_center, axis=1)
+    #         closest_idx = np.argmin(distances)
+            
+    #         original_idx = np.where(labels == label)[0][closest_idx]
+    #         merged_indices.append(original_idx)
+        
+    #     return merged_indices
