@@ -1,3 +1,9 @@
+# Reproduction at GRASP Lab
+- Tony Wang, weclome to contact at: tonyw3@seas.upenn.edu
+- [x] vision pipeline
+- [ ] Mujuco pipeline
+- [ ] real world pipeline
+
 ## ReKep: Spatio-Temporal Reasoning of Relational Keypoint Constraints for Robotic Manipulation
 
 #### [[Project Page]](https://rekep-robot.github.io/) [[Paper]](https://rekep-robot.github.io/rekep.pdf) [[Video]](https://youtu.be/2S8YhBdLdww)
