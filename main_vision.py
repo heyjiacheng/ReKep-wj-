@@ -14,7 +14,9 @@ from rekep.utils import (
 )
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-from rekep.perception.realsense import initialize_realsense
+# from rekep.perception.realsense import initialize_realsense
+from rekep.perception.gdino import GroundingDINO
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -31,32 +33,9 @@ class MainVision:
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
         self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
+
         self.intrinsics = self.load_camera_intrinsics()
 
-    def load_camera_intrinsics(self):
-        # Load the JSON file containing the camera calibration
-        # pipeline = rs.pipeline()
-        # config = rs.config()
-        # pipeline_wrapper = rs.pipeline_wrapper(pipeline)
-        # pipeline_profile = config.resolve(pipeline_wrapper)
-        # device = pipeline_profile.get_device()
-
-        # config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        # config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
-        pipeline, config = initialize_realsense() # perception module
-        profile = pipeline.start(config)
-
-        depth_sensor = profile.get_device().first_depth_sensor()
-        depth_scale = depth_sensor.get_depth_scale()
-
-        depth_profile = rs.video_stream_profile(profile.get_stream(rs.stream.depth))
-        intrinsics = depth_profile.get_intrinsics()
-
-        pipeline.stop()
-
-        return intrinsics, depth_scale
-    
     def load_camera_intrinsics(self):
         # D435i 的默认内参（你可以根据实际情况修改这些值）
         class RS_Intrinsics:
@@ -104,6 +83,18 @@ class MainVision:
         print(f"Debug: Input image shape: {rgb.shape}") # (480, 640, 3)
         print(f"Debug: Input depth shape: {depth.shape}") # (480, 640)  
 
+        # detect objects
+        gdino = GroundingDINO()
+        prompts = ["a table", "cloth", "keyboard"]
+        rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(rgb_path, bgr)
+        results = gdino.detect_objects(rgb_path, prompts)
+        self._show_objects(rgb, results.objects)
+        # print(f"Debug: Detected {len(results)} objects")
+        for obj in results.objects:
+            print(f"class: {obj.category}, conf: {obj.score:.2f}")
+        import pdb; pdb.set_trace()
         # Generate masks
         masks_dict = self.mask_generator.generate(rgb)
         masks = [m['segmentation'] for m in masks_dict]
@@ -128,8 +119,18 @@ class MainVision:
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
 
         
-
-
+    def _show_objects(self, rgb, results):
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 8))
+        plt.imshow(rgb)
+        plt.axis('on')
+        plt.title('Detected Objects')
+        # for obj in results:
+        #     plt.text(obj.bbox[0], obj.bbox[1], obj.category, color='red', fontsize=12)
+        #     plt.box(obj.bbox)
+        plt.savefig('data/gdino_objects.png', bbox_inches='tight', dpi=300)
+        plt.close()
+        
     def _show_image(self, idx_img, rgb, masks):
         # Save the annotated image with keypoints
         import matplotlib.pyplot as plt

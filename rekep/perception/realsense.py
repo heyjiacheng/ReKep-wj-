@@ -29,3 +29,29 @@ def initialize_realsense():
                           config['resolution']['height'], rs.format.rgb8, config['fps'])
     
     return pipeline, rs_config
+
+
+def load_camera_intrinsics(self):
+    # Load the JSON file containing the camera calibration
+    # pipeline = rs.pipeline()
+    # config = rs.config()
+    # pipeline_wrapper = rs.pipeline_wrapper(pipeline)
+    # pipeline_profile = config.resolve(pipeline_wrapper)
+    # device = pipeline_profile.get_device()
+
+    # config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    # config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+    pipeline, config = initialize_realsense() # perception module
+    profile = pipeline.start(config)
+
+    depth_sensor = profile.get_device().first_depth_sensor()
+    depth_scale = depth_sensor.get_depth_scale()
+
+    depth_profile = rs.video_stream_profile(profile.get_stream(rs.stream.depth))
+    intrinsics = depth_profile.get_intrinsics()
+
+    pipeline.stop()
+
+    return intrinsics, depth_scale
+ 
