@@ -14,7 +14,7 @@ from rekep.utils import (
 )
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-
+from rekep.perception.realsense import initialize_realsense
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -35,15 +35,16 @@ class MainVision:
 
     def load_camera_intrinsics(self):
         # Load the JSON file containing the camera calibration
-        pipeline = rs.pipeline()
-        config = rs.config()
-        pipeline_wrapper = rs.pipeline_wrapper(pipeline)
-        pipeline_profile = config.resolve(pipeline_wrapper)
-        device = pipeline_profile.get_device()
+        # pipeline = rs.pipeline()
+        # config = rs.config()
+        # pipeline_wrapper = rs.pipeline_wrapper(pipeline)
+        # pipeline_profile = config.resolve(pipeline_wrapper)
+        # device = pipeline_profile.get_device()
 
-        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        # config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        # config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
+        pipeline, config = initialize_realsense() # perception module
         profile = pipeline.start(config)
 
         depth_sensor = profile.get_device().first_depth_sensor()
@@ -53,6 +54,20 @@ class MainVision:
         intrinsics = depth_profile.get_intrinsics()
 
         pipeline.stop()
+
+        return intrinsics, depth_scale
+    
+    def load_camera_intrinsics(self):
+        # D435i 的默认内参（你可以根据实际情况修改这些值）
+        class RS_Intrinsics:
+            def __init__(self):
+                self.fx = 386.738  # focal length x
+                self.fy = 386.738  # focal length y
+                self.ppx = 319.5   # principal point x
+                self.ppy = 239.5   # principal point y
+                
+        intrinsics = RS_Intrinsics()
+        depth_scale = 0.001  # D435i默认深度比例，1mm
 
         return intrinsics, depth_scale
 

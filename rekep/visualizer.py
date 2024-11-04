@@ -2,7 +2,8 @@ import open3d as o3d
 import numpy as np
 import matplotlib
 import cv2
-import transform_utils as T
+from .transform_utils import *
+
 from .utils import filter_points_by_bounds, batch_transform_points
 
 def add_to_visualize_buffer(visualize_buffer, visualize_points, visualize_colors):
@@ -89,12 +90,12 @@ class Visualizer:
         # scene
         scene_points, scene_colors = self._get_scene_points_and_colors()
         add_to_visualize_buffer(visualize_buffer, scene_points, scene_colors)
-        subgoal_pose_homo = T.convert_pose_quat2mat(subgoal_pose)
+        subgoal_pose_homo = convert_pose_quat2mat(subgoal_pose)
         # subgoal
         collision_points = self.env.get_collision_points(noise=False)
         # transform collision points to the subgoal frame
         ee_pose = self.env.get_ee_pose()
-        ee_pose_homo = T.convert_pose_quat2mat(ee_pose)
+        ee_pose_homo = convert_pose_quat2mat(ee_pose)
         centering_transform = np.linalg.inv(ee_pose_homo)
         collision_points_centered = np.dot(collision_points, centering_transform[:3, :3].T) + centering_transform[:3, 3]
         transformed_collision_points = batch_transform_points(collision_points_centered, subgoal_pose_homo[None]).reshape(-1, 3)
@@ -148,9 +149,9 @@ class Visualizer:
         collision_points = self.env.get_collision_points(noise=False)
         num_points = collision_points.shape[0]
         start_pose = self.env.get_ee_pose()
-        centering_transform = np.linalg.inv(T.convert_pose_quat2mat(start_pose))
+        centering_transform = np.linalg.inv(convert_pose_quat2mat(start_pose))
         collision_points_centered = np.dot(collision_points, centering_transform[:3, :3].T) + centering_transform[:3, 3]
-        poses_homo = T.convert_pose_quat2mat(path[:, :7])  # the last number is gripper action
+        poses_homo = convert_pose_quat2mat(path[:, :7])  # the last number is gripper action
         transformed_collision_points = batch_transform_points(collision_points_centered, poses_homo).reshape(-1, 3)  # (num_poses, num_points, 3)
         # calculate color based on the timestep
         collision_points_colors = np.ones([path_length, num_points, 3]) * self.color[None, None]

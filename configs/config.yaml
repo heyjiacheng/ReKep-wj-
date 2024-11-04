@@ -69,6 +69,36 @@ env:
       orientation: [ 0.0550,  0.0544,  0.7010,  0.7090]
       resolution: 480
 
+
+perception:
+  cameras:
+    zed2:
+      resolution: [1280, 720]
+      fps: 30
+    depth_pro:
+      resolution: [640, 480]
+      fps: 60
+  fusion:
+    registration_method: "icp"
+    voxel_size: 0.01
+
+actor_critic:
+  actor:
+    model: "gpt-4o"
+    temperature: 0.8
+    max_tokens: 1000
+  critic:
+    semantic_weight: 0.4
+    geometric_weight: 0.6
+
+# policy:
+#   diffusion:
+#     num_steps: 100
+#     beta_schedule: "linear"
+#   rl:
+#     algorithm: "sac"
+#     reward_shaping: True
+
 path_solver:
   opt_pos_step_size: 0.20  # controls the density of control points in the path
   opt_rot_step_size: 0.78  # controls the density of control points in the path

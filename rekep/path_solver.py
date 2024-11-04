@@ -3,8 +3,10 @@ from scipy.optimize import dual_annealing, minimize
 from scipy.interpolate import RegularGridInterpolator
 import copy
 import time
-import transform_utils as T
-from utils import (
+
+from .transform_utils import *
+
+from .utils import (
     farthest_point_sampling,
     get_linear_interpolation_steps,
     linear_interpolate_poses,
@@ -41,11 +43,11 @@ def objective(opt_vars,
     # unnormalize variables and do conversion
     unnormalized_opt_vars = unnormalize_vars(opt_vars, og_bounds)
     control_points_euler = np.concatenate([start_pose[None], unnormalized_opt_vars.reshape(-1, 6), end_pose[None]], axis=0)  # [num_control_points, 6]
-    control_points_homo = T.convert_pose_euler2mat(control_points_euler)  # [num_control_points, 4, 4]
-    control_points_quat = T.convert_pose_mat2quat(control_points_homo)  # [num_control_points, 7]
+    control_points_homo = convert_pose_euler2mat(control_points_euler)  # [num_control_points, 4, 4]
+    control_points_quat = convert_pose_mat2quat(control_points_homo)  # [num_control_points, 7]
     # get dense samples
     poses_quat, num_poses = get_samples_jitted(control_points_homo, control_points_quat, opt_interpolate_pos_step_size, opt_interpolate_rot_step_size)
-    poses_homo = T.convert_pose_quat2mat(poses_quat)
+    poses_homo = convert_pose_quat2mat(poses_quat)
     debug_dict['num_poses'] = num_poses
     start_idx, end_idx = 1, num_poses - 1  # exclude start and goal
 
@@ -166,7 +168,7 @@ class PathSolver:
         return opt_result
 
     def _center_collision_points_and_keypoints(self, ee_pose, collision_points, keypoints, keypoint_movable_mask):
-        ee_pose_homo = T.pose2mat([ee_pose[:3], T.euler2quat(ee_pose[3:])])
+        ee_pose_homo = pose2mat([ee_pose[:3], euler2quat(ee_pose[3:])])
         centering_transform = np.linalg.inv(ee_pose_homo)
         collision_points_centered = np.dot(collision_points, centering_transform[:3, :3].T) + centering_transform[:3, 3]
         keypoints_centered = transform_keypoints(centering_transform, keypoints, keypoint_movable_mask)
@@ -210,8 +212,8 @@ class PathSolver:
         num_control_points = get_linear_interpolation_steps(start_pose, end_pose, self.config['opt_pos_step_size'], self.config['opt_rot_step_size'])
         num_control_points = np.clip(num_control_points, 3, 6)
         # transform to euler representation
-        start_pose = np.concatenate([start_pose[:3], T.quat2euler(start_pose[3:])])
-        end_pose = np.concatenate([end_pose[:3], T.quat2euler(end_pose[3:])])
+        start_pose = np.concatenate([start_pose[:3], quat2euler(start_pose[3:])])
+        end_pose = np.concatenate([end_pose[:3], quat2euler(end_pose[3:])])
 
         # bounds for decision variables
         og_bounds = [(b_min, b_max) for b_min, b_max in zip(self.config['bounds_min'], self.config['bounds_max'])] + \
@@ -312,7 +314,7 @@ class PathSolver:
         sol = unnormalize_vars(opt_result.x, og_bounds)
         # add end pose
         poses_euler = np.concatenate([sol.reshape(-1, 6), end_pose[None]], axis=0)
-        poses_quat = T.convert_pose_euler2quat(poses_euler)  # [num_control_points, 7]
+        poses_quat = convert_pose_euler2quat(poses_euler)  # [num_control_points, 7]
         opt_result = self._check_opt_result(opt_result, poses_quat, debug_dict, og_bounds)
         # cache opt_result for future use if successful
         if opt_result.success:

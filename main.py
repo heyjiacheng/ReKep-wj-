@@ -5,16 +5,16 @@ import os
 import pdb 
 
 import argparse
-from environment import ReKepOGEnv
-from keypoint_proposal import KeypointProposer
-from constraint_generation import ConstraintGenerator
-from ik_solver import IKSolver
-from subgoal_solver import SubgoalSolver
-from path_solver import PathSolver
-from visualizer import Visualizer
-import transform_utils as T
-from omnigibson.robots.fetch import Fetch
-from utils import (
+# from environment import ReKepOGEnv
+from rekep.keypoint_proposal import KeypointProposer
+from rekep.constraint_generation import ConstraintGenerator
+from rekep.ik_solver import IKSolver
+from rekep.subgoal_solver import SubgoalSolver
+from rekep.path_solver import PathSolver
+from rekep.visualizer import Visualizer
+import rekep.transform_utils as T
+
+from rekep.utils import (
     bcolors,
     get_config,
     load_functions_from_txt,
@@ -39,29 +39,31 @@ class Main:
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
         # initialize environment
-        self.env = ReKepOGEnv(global_config['env'], scene_file, verbose=False)
+        # self.env = ReKepOGEnv(global_config['env'], scene_file, verbose=False)
         # setup ik solver (for reachability cost)
-        assert isinstance(self.env.robot, Fetch), "The IK solver assumes the robot is a Fetch robot"
+        # assert isinstance(self.env.robot, Fetch), "The IK solver assumes the robot is a Fetch robot"
         ik_solver = IKSolver(
-            robot_description_path=self.env.robot.robot_arm_descriptor_yamls[self.env.robot.default_arm],
-            robot_urdf_path=self.env.robot.urdf_path,
-            eef_name=self.env.robot.eef_link_names[self.env.robot.default_arm],
-            reset_joint_pos=self.env.reset_joint_pos,
-            world2robot_homo=self.env.world2robot_homo,
+            robot_description_path= None, # self.env.robot.robot_arm_descriptor_yamls[self.env.robot.default_arm],
+            robot_urdf_path= None, # self.env.robot.urdf_path,
+            eef_name=None, # self.env.robot.eef_link_names[self.env.robot.default_arm],
+            reset_joint_pos=None, # self.env.reset_joint_pos,
+            world2robot_homo=None, # self.env.world2robot_homo,
         )
         # initialize solvers
-        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, self.env.reset_joint_pos)
-        self.path_solver = PathSolver(global_config['path_solver'], ik_solver, self.env.reset_joint_pos)
+        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, None) # self.env.reset_joint_pos)
+        self.path_solver = PathSolver(global_config['path_solver'], ik_solver, None) #self.env.reset_joint_pos)
         # initialize visualizer
         if self.visualize:
             self.visualizer = Visualizer(global_config['visualizer'], self.env)
 
     def perform_task(self, instruction, rekep_program_dir=None, disturbance_seq=None):
-        self.env.reset()
-        cam_obs = self.env.get_cam_obs()
-        rgb = cam_obs[self.config['vlm_camera']]['rgb']
-        points = cam_obs[self.config['vlm_camera']]['points']
-        mask = cam_obs[self.config['vlm_camera']]['seg']
+        # self.env.reset()
+        # cam_obs = self.env.get_cam_obs()
+        # rgb = cam_obs[self.config['vlm_camera']]['rgb']
+        # points = cam_obs[self.config['vlm_camera']]['points']
+        # mask = cam_obs[self.config['vlm_camera']]['seg']
+
+
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
@@ -76,6 +78,7 @@ class Main:
         # ====================================
         # = execute
         # ====================================
+        import pdb; pdb.set_trace()
         self._execute(rekep_program_dir, disturbance_seq)
 
     def _update_disturbance_seq(self, stage, disturbance_seq):
