@@ -33,18 +33,15 @@ class MainVision:
         global_config = get_config(config_path="./configs/config.yaml")
         self.config = global_config['main']
         self.visualize = visualize
-        # Set random seed
         np.random.seed(self.config['seed'])
         torch.manual_seed(self.config['seed'])
         torch.cuda.manual_seed(self.config['seed'])
-        # Initialize keypoint proposer and constraint generator
+
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
         # Init with local bbox
         sam_model = build_sam2(model_cfg, checkpoint).to(device)
         self.mask_generator = SAM2ImagePredictor(sam_model)
-        # init with huggingface
-        # self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
 
         self.intrinsics = self.load_camera_intrinsics()
 
@@ -81,7 +78,16 @@ class MainVision:
         points = np.stack((x, y, z), axis = -1)
         return points    
     
-    def perform_task(self, instruction, data_path, frame_number):
+    def get_bboxes(self, rgb, obj_list):
+        gdino = GroundingDINO()
+        rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(rgb_path, bgr)
+        results = gdino.detect_objects(rgb_path, obj_list)
+        return results
+
+
+    def perform_task(self, instruction,obj_list, data_path, frame_number):
         # BUG: name for  color is not consistent
         color_path = os.path.join(data_path, f'color_{frame_number:06d}.npy')
         depth_path = os.path.join(data_path, f'depth_{frame_number:06d}.npy')
@@ -97,17 +103,20 @@ class MainVision:
 
         # detect objects
         gdino = GroundingDINO()
-        prompts = ["cloth",]
         rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         cv2.imwrite(rgb_path, bgr)
-        results = gdino.detect_objects(rgb_path, prompts)
+        if isinstance(obj_list, str):
+            obj_list = obj_list.split(',')  # 如果输入是逗号分隔的字符串
+    
+        results = gdino.detect_objects(rgb_path, obj_list)
         self._show_objects(rgb, results.objects)
         # print(f"Debug: Detected {len(results)} objects")
         boxes = []
         for obj in results.objects:
             print(f"class: {obj.category}, conf: {obj.score:.2f}, bbox: {obj.bbox}")
             boxes.append(obj.bbox)
+        print(f"Debug: obj_list: {obj_list}")
         print(f"Debug: Boxes: {boxes}")
         # import pdb; pdb.set_trace()
         # Generate masks
@@ -160,12 +169,14 @@ class MainVision:
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
+    parser.add_argument('--obj_list', type=str, required=True, help='String List of objects to detect')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the directory containing color and depth frames')
     parser.add_argument('--frame_number', type=int, required=True, help='Frame number to process')
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
 
     main = MainVision(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, data_path=args.data_path, frame_number=args.frame_number)
+    main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path, frame_number=args.frame_number)
