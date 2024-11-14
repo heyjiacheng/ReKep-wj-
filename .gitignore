@@ -18,7 +18,9 @@ data/1
 demo/
 vlm_query/
 data/rgbd/
-
+data/disp/
+data/gdino_objects.png
+data/temp_rgb.png
 
 # Distribution / packaging
 .Python
