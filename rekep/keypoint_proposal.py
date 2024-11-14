@@ -95,6 +95,8 @@ class KeypointProposer:
 
     def _preprocess(self, rgb, points, masks):
         # input masks should be binary masks
+        if masks.dtype != bool:
+            bi_masks = masks.astype(bool)
         # ensure input shape is compatible with dinov2
         H, W, _ = rgb.shape
         patch_h = int(H // self.patch_size)
@@ -110,7 +112,7 @@ class KeypointProposer:
             'patch_h': patch_h,
             'patch_w': patch_w,
         }
-        return transformed_rgb, rgb, points, masks, shape_info
+        return transformed_rgb, rgb, points, bi_masks, shape_info
     
     def _project_keypoints_to_img(self, rgb, candidate_pixels, candidate_rigid_group_ids, masks, features_flat):
         projected = rgb.copy()

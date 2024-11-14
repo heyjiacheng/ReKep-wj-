@@ -14,6 +14,14 @@ from rekep.utils import (
 )
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+checkpoint =  '/data3/model_ckpt/sam2_hiera_small.pt'
+model_cfg = "configs/sam2/sam2_hiera_s.yaml"
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+
 # from rekep.perception.realsense import initialize_realsense
 from rekep.perception.gdino import GroundingDINO
 
@@ -32,7 +40,11 @@ class MainVision:
         # Initialize keypoint proposer and constraint generator
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
-        self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
+        # Init with local bbox
+        sam_model = build_sam2(model_cfg, checkpoint).to(device)
+        self.mask_generator = SAM2ImagePredictor(sam_model)
+        # init with huggingface
+        # self.mask_generator = SAM2AutomaticMaskGenerator.from_pretrained("facebook/sam2-hiera-small")
 
         self.intrinsics = self.load_camera_intrinsics()
 
@@ -85,24 +97,29 @@ class MainVision:
 
         # detect objects
         gdino = GroundingDINO()
-        prompts = ["a table", "cloth", "keyboard"]
+        prompts = ["cloth",]
         rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         cv2.imwrite(rgb_path, bgr)
         results = gdino.detect_objects(rgb_path, prompts)
         self._show_objects(rgb, results.objects)
         # print(f"Debug: Detected {len(results)} objects")
+        boxes = []
         for obj in results.objects:
-            print(f"class: {obj.category}, conf: {obj.score:.2f}")
-        import pdb; pdb.set_trace()
+            print(f"class: {obj.category}, conf: {obj.score:.2f}, bbox: {obj.bbox}")
+            boxes.append(obj.bbox)
+        print(f"Debug: Boxes: {boxes}")
+        # import pdb; pdb.set_trace()
         # Generate masks
-        masks_dict = self.mask_generator.generate(rgb)
-        masks = [m['segmentation'] for m in masks_dict]
+        # masks_dict = self.mask_generator.generate(rgb)
+        self.mask_generator.set_image(rgb)
+        with torch.no_grad():
+            masks, scores, logits = self.mask_generator.predict(box=boxes, multimask_output=False)
+        # masks = [m['segmentation'] for m in masks_dict]
         print(f"Debug: Generated {len(masks)} masks")
         print(f"Debug: masks shape: {masks[0].shape}")
         print(f"Debug: Type of masks: {type(masks)}")
         # TODO: Add point cloud data from DepthPro model 
-        # replace env.get_cam_obs() with Mujoco camera observation
 
         # Generate point cloud from depth image
         points = self.depth_to_pointcloud(depth)
@@ -113,7 +130,7 @@ class MainVision:
         keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, masks)
         print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
         if self.visualize:
-            self._show_image(projected_img,rgb,masks_dict)
+            self._show_image(projected_img,rgb)
         metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
         rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
@@ -125,13 +142,13 @@ class MainVision:
         plt.imshow(rgb)
         plt.axis('on')
         plt.title('Detected Objects')
-        # for obj in results:
-        #     plt.text(obj.bbox[0], obj.bbox[1], obj.category, color='red', fontsize=12)
-        #     plt.box(obj.bbox)
+        for obj in results:
+            plt.text(obj.bbox[0], obj.bbox[1], obj.category, color='red', fontsize=12)
+            plt.box(obj.bbox)
         plt.savefig('data/gdino_objects.png', bbox_inches='tight', dpi=300)
         plt.close()
         
-    def _show_image(self, idx_img, rgb, masks):
+    def _show_image(self, idx_img, rgb, masks = None,bboxes = None):
         # Save the annotated image with keypoints
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10, 8))
@@ -140,19 +157,6 @@ class MainVision:
         plt.title('Annotated Image with Keypoints')
         plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
         plt.close()
-
-        # Save the image with SAM2 masks using supervision
-        rgb_cv2 = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        mask_annotator = sv.MaskAnnotator(        )
-
-        detections = sv.Detections.from_sam(masks)
-
-        annotated_frame = mask_annotator.annotate(
-            scene=rgb_cv2.copy(),
-            detections=detections
-        )
-
-        cv2.imwrite('data/rekep_with_masks_50_discrepancy.png', annotated_frame)
 
 
 if __name__ == "__main__":
