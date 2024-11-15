@@ -28,6 +28,20 @@ from rekep.perception.gdino import GroundingDINO
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+
+import time
+
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Function {func.__name__} took {end_time - start_time:.2f} seconds to execute")
+        return result
+    return wrapper
+
+
+@timer_decorator
 class MainVision:
     def __init__(self, visualize=False):
         global_config = get_config(config_path="./configs/config.yaml")
@@ -59,6 +73,7 @@ class MainVision:
 
         return intrinsics, depth_scale
 
+    @timer_decorator
     def depth_to_pointcloud(self, depth):
         # TODO: check if this is correct
         intrinsics, depth_scale = self.intrinsics
@@ -86,7 +101,7 @@ class MainVision:
         results = gdino.detect_objects(rgb_path, obj_list)
         return results
 
-
+    @timer_decorator
     def perform_task(self, instruction,obj_list, data_path, frame_number):
         # BUG: name for  color is not consistent
         color_path = os.path.join(data_path, f'color_{frame_number:06d}.npy')
