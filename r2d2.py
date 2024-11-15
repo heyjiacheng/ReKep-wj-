@@ -7,7 +7,7 @@ import pdb
 import argparse
 from rekep.keypoint_proposal import KeypointProposer
 from rekep.constraint_generation import ConstraintGenerator
-from rekep.ik_solver import IKSolver
+from rekep.ik_solver import FrankaIKSolver
 from rekep.subgoal_solver import SubgoalSolver
 from rekep.path_solver import PathSolver
 from rekep.visualizer import Visualizer
@@ -22,6 +22,7 @@ from rekep.utils import (
     get_callable_grasping_cost_fn,
     print_opt_debug_dict,
 )
+
 
 class MainR2D2:
     def __init__(self, visualize=False):
@@ -38,25 +39,33 @@ class MainR2D2:
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
 
-        ik_solver = None
+        ik_solver = FrankaIKSolver(
+            world2robot_homo=None, # self.env.world2robot_homo,
+        )
         # initialize solvers
-        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], None, None) # self.env.reset_joint_pos)
-        self.path_solver = PathSolver(global_config['path_solver'], None, None) #self.env.reset_joint_pos)
-        # initialize visualizer
-        if self.visualize:
-            self.visualizer = Visualizer(global_config['visualizer'], self.env)
-
-    def perform_task(self, instruction, rekep_program_dir=None):
-        rgb = np.load('data/r2d2/rgb.npy')
-        points = np.load('data/r2d2/points.npy')
-        mask = np.load('data/r2d2/mask.npy')
+        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, None) # self.env.reset_joint_pos)
+        self.path_solver = PathSolver(global_config['path_solver'], ik_solver, None) #self.env.reset_joint_pos)
+    
+    def load_rgbd_data(self, folder=None, frame=None):
+        if folder is None:
+            folder = 'data/rgbd/cloth-hack-1'
+        if frame is None:
+            frame = 10
+        rgb = np.load(f'{folder}/color_{frame:06d}.npy')
+        points = np.load(f'{folder}/depth_{frame:06d}.npy')
+        mask = np.load(f'{folder}/mask_{frame:06d}.npy')
         print(f"Debug: Loaded RGB image with shape: {rgb.shape}")
         print(f"Debug: Loaded point cloud with shape: {points.shape}")
         print(f"Debug: Loaded mask with shape: {mask.shape}")
+        return rgb, points, mask
+
+    def perform_task(self, instruction, rekep_program_dir=None):
+  
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
         if rekep_program_dir is None:
+            rgb, points, mask = self.load_rgbd_data()
             keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, mask)
             print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
             if self.visualize:
@@ -98,7 +107,8 @@ class MainR2D2:
         while True:
             pdb.set_trace() 
 
-            scene_keypoints = self.env.get_keypoint_positions()
+            scene_keypoints = self.env.get_keypoint_positions() # TODO rewrite
+            
             self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)  # first keypoint is always the ee
             self.curr_ee_pose = self.env.get_ee_pose()
             self.curr_joint_pos = self.env.get_arm_joint_postions()
@@ -258,12 +268,10 @@ class MainR2D2:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
-    parser.add_argument('--obj_list', type=str, required=True, help='String List of objects to detect')
-    parser.add_argument('--data_path', type=str, required=True, help='Path to the directory containing color and depth frames')
-    parser.add_argument('--frame_number', type=int, required=True, help='Frame number to process')
-    parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
+    parser.add_argument('--rekep_program_dir', type=str, required=True, help='keypoint constrain proposed folder')
+    parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
     args = parser.parse_args()
 
 
     main = MainR2D2(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path, frame_number=args.frame_number)
+    main.perform_task(instruction=args.instruction, rekep_program_dir=args.rekep_program_dir)
