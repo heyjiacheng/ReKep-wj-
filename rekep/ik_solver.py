@@ -8,6 +8,17 @@ import numpy as np
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+class IKResult:
+    """Class to store IK solution results"""
+    def __init__(self, success, joint_positions, error_pos, error_rot, num_descents=None):
+        self.success = success
+        self.cspace_position = joint_positions
+        self.position_error = error_pos
+        self.rotation_error = error_rot
+        self.num_descents = num_descents if num_descents is not None else 1
+    
+    
+# TODO use real IK solver
 class FrankaIKSolver:
     """Franka IK Solver"""
     def __init__(self, world2robot_homo=None):
@@ -41,6 +52,9 @@ class FrankaIKSolver:
              orientation_tolerance=0.05,
              max_iterations=150,
              initial_joint_pos=None):
+        """
+        Mock IK solver that returns a valid IKResult
+        """
         # Transform target pose to robot base frame
         robot_pose = self.transform_pose(target_pose_homo)
         
@@ -51,16 +65,28 @@ class FrankaIKSolver:
         # Use initial joint positions or default
         if initial_joint_pos is None:
             initial_joint_pos = self.reset_joint_pos
-            
-        # This is a placeholder that returns the initial position
-        solution = {
-            'success': True,
-            'joint_positions': initial_joint_pos,
-            'error_pos': 0.0,
-            'error_rot': 0.0
-        }
         
-        return solution
+        # 简单的工作空间检查
+        in_workspace = np.all(np.abs(target_pos) < 1.0)
+        
+        if in_workspace:
+            # 成功情况
+            return IKResult(
+                success=True,
+                joint_positions=initial_joint_pos,  # 使用初始关节角度或默认值
+                error_pos=0.01,
+                error_rot=0.01,
+                num_descents=max_iterations // 2
+            )
+        else:
+            # 失败情况，但仍然返回一个有效的IKResult
+            return IKResult(
+                success=False,
+                joint_positions=self.reset_joint_pos,  # 使用重置位置
+                error_pos=1.0,
+                error_rot=1.0,
+                num_descents=max_iterations
+            )
     
     def forward_kinematics(self, joint_positions):
         """

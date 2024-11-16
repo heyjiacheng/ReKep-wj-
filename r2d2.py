@@ -101,7 +101,7 @@ class MainR2D2:
 
     def _execute(self, rekep_program_dir):
         # load metadata
-        pdb.set_trace()
+        # pdb.set_trace()
         with open(os.path.join(rekep_program_dir, 'metadata.json'), 'r') as f:
             self.program_info = json.load(f)
         # register keypoints to be tracked
@@ -125,13 +125,13 @@ class MainR2D2:
         self.last_sim_step_counter = -np.inf
         self._update_stage(1)
         while True:
-            pdb.set_trace() 
+            # pdb.set_trace() 
 
-            scene_keypoints = self.env.get_keypoint_positions() # TODO rewrite
+            scene_keypoints = self.env.get_keypoint_positions() 
             
             self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)  # first keypoint is always the ee
             self.curr_ee_pose = self.env.get_ee_pose()
-            self.curr_joint_pos = self.env.get_arm_joint_postions()
+            self.curr_joint_pos = self.env.get_arm_joint_positions()
             self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size'])
             self.collision_points = self.env.get_collision_points()
             # ====================================
@@ -167,13 +167,13 @@ class MainR2D2:
                 # ====================================
                 # = get optimized plan
                 # ====================================
-                if self.last_sim_step_counter == self.env.step_counter:
-                    print(f"{bcolors.WARNING}sim did not step forward within last iteration (HINT: adjust action_steps_per_iter to be larger or the pos_threshold to be smaller){bcolors.ENDC}")
+                # if self.last_sim_step_counter == self.env.step_counter:
+                #     print(f"{bcolors.WARNING}sim did not step forward within last iteration (HINT: adjust action_steps_per_iter to be larger or the pos_threshold to be smaller){bcolors.ENDC}")
                 next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter)
                 next_path = self._get_next_path(next_subgoal, from_scratch=self.first_iter)
                 self.first_iter = False
                 self.action_queue = next_path.tolist()
-                self.last_sim_step_counter = self.env.step_counter
+                # self.last_sim_step_counter = self.env.step_counter
 
                 # ====================================
                 # = execute
@@ -200,7 +200,7 @@ class MainR2D2:
                     self._update_stage(self.stage + 1)
 
     def _get_next_subgoal(self, from_scratch):
-        pdb.set_trace()
+        # pdb.set_trace()
         subgoal_constraints = self.constraint_fns[self.stage]['subgoal']
         path_constraints = self.constraint_fns[self.stage]['path']
         subgoal_pose, debug_dict = self.subgoal_solver.solve(self.curr_ee_pose,

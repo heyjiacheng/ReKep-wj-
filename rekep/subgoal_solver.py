@@ -61,7 +61,7 @@ def objective(opt_vars,
     debug_dict['ik_pos_error'] = ik_result.position_error
     debug_dict['ik_cost'] = ik_cost
     cost += ik_cost
-    if ik_result.success:
+    if 0:# ik_result.success:
         reset_reg = np.linalg.norm(ik_result.cspace_position[:-1] - reset_joint_pos[:-1])
         reset_reg = np.clip(reset_reg, 0.0, 3.0)
     else:
