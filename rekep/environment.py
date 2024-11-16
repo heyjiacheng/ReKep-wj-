@@ -7,22 +7,22 @@ import trimesh
 import open3d as o3d
 import imageio
 # OG related
-import omnigibson as og
-from omnigibson.macros import gm
-from omnigibson.utils.usd_utils import PoseAPI, mesh_prim_mesh_to_trimesh_mesh, mesh_prim_shape_to_trimesh_mesh
-from omnigibson.robots.fetch import Fetch
-from omnigibson.controllers import IsGraspingState
+# import omnigibson as og
+# from omnigibson.macros import gm
+# from omnigibson.utils.usd_utils import PoseAPI, mesh_prim_mesh_to_trimesh_mesh, mesh_prim_shape_to_trimesh_mesh
+# from omnigibson.robots.fetch import Fetch
+# from omnigibson.controllers import IsGraspingState
 
 
-from og_utils import OGCamera
-from omnigibson.robots.manipulation_robot import ManipulationRobot
-from omnigibson.controllers.controller_base import ControlType, BaseController
+# from og_utils import OGCamera
+# from omnigibson.robots.manipulation_robot import ManipulationRobot
+# from omnigibson.controllers.controller_base import ControlType, BaseController
 
 # Mujoco related
-import mujoco
+# import mujoco
 
 
-from utils import (
+from .utils import (
     bcolors,
     get_clock_time,
     angle_between_rotmat,
@@ -30,36 +30,192 @@ from utils import (
     get_linear_interpolation_steps,
     linear_interpolate_poses,
 )
-# Don't use GPU dynamics and use flatcache for performance boost
-gm.USE_GPU_DYNAMICS = True
-gm.ENABLE_FLATCACHE = False
 
 # some customization to the OG functions
-def custom_clip_control(self, control):
-    """
-    Clips the inputted @control signal based on @control_limits.
+# def custom_clip_control(self, control):
+#     """
+#     Clips the inputted @control signal based on @control_limits.
 
-    Args:
-        control (Array[float]): control signal to clip
+#     Args:
+#         control (Array[float]): control signal to clip
 
-    Returns:
-        Array[float]: Clipped control signal
-    """
-    clipped_control = control.clip(
-        self._control_limits[self.control_type][0][self.dof_idx],
-        self._control_limits[self.control_type][1][self.dof_idx],
-    )
-    idx = (
-        self._dof_has_limits[self.dof_idx]
-        if self.control_type == ControlType.POSITION
-        else [True] * self.control_dim
-    )
-    if len(control) > 1:
-        control[idx] = clipped_control[idx]
-    return control
+#     Returns:
+#         Array[float]: Clipped control signal
+#     """
+#     clipped_control = control.clip(
+#         self._control_limits[self.control_type][0][self.dof_idx],
+#         self._control_limits[self.control_type][1][self.dof_idx],
+#     )
+#     idx = (
+#         self._dof_has_limits[self.dof_idx]
+#         if self.control_type == ControlType.POSITION
+#         else [True] * self.control_dim
+#     )
+#     if len(control) > 1:
+#         control[idx] = clipped_control[idx]
+#     return control
 
-Fetch._initialize = ManipulationRobot._initialize
-BaseController.clip_control = custom_clip_control
+# Fetch._initialize = ManipulationRobot._initialize
+# BaseController.clip_control = custom_clip_control
+
+
+
+class RobotController:
+    def __init__(self):
+        self.joint_limits = {
+            'position': {
+                'upper': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],  # 示例值，需要根据实际机器人调整
+                'lower': [-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0]
+            },
+            'velocity': {
+                'upper': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                'lower': [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+            },
+            'effort': {
+                'upper': [87, 87, 87, 87, 12, 12, 12],
+                'lower': [-87, -87, -87, -87, -12, -12, -12]
+            }
+        }
+
+    def clip_control(self, control, control_type='position'):
+        if control_type not in self.joint_limits:
+            print(f"Warning: Unknown control type {control_type}")
+            return control
+        upper = self.joint_limits[control_type]['upper']
+        lower = self.joint_limits[control_type]['lower']
+        
+        n_joints = min(len(control), len(upper))
+        clipped = np.clip(control[:n_joints], lower[:n_joints], upper[:n_joints])
+        print(f"Clipping {control_type} control from {control} to {clipped}")
+        return clipped
+
+    def send_command(self, command, control_type='position'):
+        """
+        Send a safe command to the robot
+        
+        Args:
+            command: Control command
+            control_type: Type of control
+        """
+        safe_command = self.clip_control(command, control_type)
+        print(f"Sending {control_type} command: {safe_command}")
+        # Here you would add your actual robot control code
+        return safe_command
+
+
+
+class R2D2Env:
+    def __init__(self, config=None, verbose=False):
+        self.video_cache = []
+        self.config = config
+        self.verbose = verbose 
+        self.bounds_min = np.array(self.config['bounds_min'])
+        self.bounds_max = np.array(self.config['bounds_max'])
+        self.interpolate_pos_step_size = self.config['interpolate_pos_step_size']
+        self.interpolate_rot_step_size = self.config['interpolate_rot_step_size']
+        
+        self.robot = RobotController()
+        self.reset_joint_pos = np.zeros(7)  # Default home position
+        self.gripper_state = 1.0  # 1.0 is open, 0.0 is closed
+        self.ee_pose = [0.5, 0, 0.5, 1, 0, 0, 0]  # Example initial pose [x,y,z, qw,qx,qy,qz]
+        print("Robot interface initialized")
+        
+    def get_ee_pose(self):
+        """Get end-effector pose"""
+        print(f"Getting EE pose: {self.ee_pose}")
+        return self.ee_pose
+    
+    def get_ee_pos(self):
+        """Get end-effector position"""
+        return self.ee_pose[:3]
+    
+    def get_ee_quat(self):
+        """Get end-effector orientation"""
+        return self.ee_pose[3:]
+
+    def execute_action(self, action, precise=True):
+        """
+        Execute robot action
+        action: [x,y,z, qx,qy,qz,qw, gripper_action]
+        """
+        target_pose = action[:7]
+        gripper_action = action[7]
+        
+        print(f"Moving to pose: {target_pose}")
+        self.ee_pose = target_pose  # Update internal state
+        
+        if gripper_action == self.get_gripper_close_action():
+            self.close_gripper()
+        elif gripper_action == self.get_gripper_open_action():
+            self.open_gripper()
+            
+        # Return mock position and rotation errors
+        return 0.01, 0.01
+
+    def close_gripper(self):
+        """Close gripper"""
+        print("Closing gripper")
+        self.gripper_state = "closed"
+        
+    def open_gripper(self):
+        """Open gripper"""
+        print("Opening gripper")
+        self.gripper_state = "open"
+
+    def get_gripper_open_action(self):
+        return -1.0
+    
+    def get_gripper_close_action(self):
+        return 1.0
+    
+    def get_gripper_null_action(self):
+        return 0.0
+
+    def is_grasping(self, candidate_obj=None):
+        """Check if gripper is grasping"""
+        # Could be enhanced with force sensor readings
+        return self.gripper_state == "closed"
+
+    def get_collision_points(self, noise=True):
+        """Get collision points of gripper"""
+        # Return mock collision points
+        return [[0.5, 0, 0.5], [0.5, 0.1, 0.5]]
+
+    def get_keypoint_positions(self):
+        """Get current keypoint positions"""
+        # Return mock keypoint positions
+        return [[0.5, 0, 0.3], [0.6, 0, 0.3]]
+
+    def register_keypoints(self, keypoints):
+        """Register keypoints to track"""
+        print(f"Registering keypoints: {keypoints}")
+        self.keypoints = keypoints
+
+    def get_sdf_voxels(self, resolution, exclude_robot=True, exclude_obj_in_hand=True):
+        """Get signed distance field"""
+        print("Getting SDF voxels (mock data)")
+        # Return mock SDF grid
+        return np.zeros((10, 10, 10))
+
+    def get_cam_obs(self):
+        """Get camera observations"""
+        print("Getting camera observations")
+        # Return mock RGB-D data
+        return {
+            "rgb": np.zeros((480, 640, 3)),
+            "depth": np.zeros((480, 640))
+        }
+
+    def reset(self):
+        """Reset robot to home position"""
+        print("Resetting robot to home position")
+        self.ee_pose = [0.5, 0, 0.5, 1, 0, 0, 0]
+        self.open_gripper()
+
+    def sleep(self, seconds):
+        """Wait for specified duration"""
+        print(f"Sleeping for {seconds} seconds")
+        time.sleep(seconds)
 
 class ReKepOGEnv:
     def __init__(self, config, scene_file, verbose=False):

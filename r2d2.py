@@ -5,6 +5,7 @@ import os
 import pdb 
 
 import argparse
+from rekep.environment import R2D2Env
 from rekep.keypoint_proposal import KeypointProposer
 from rekep.constraint_generation import ConstraintGenerator
 from rekep.ik_solver import FrankaIKSolver
@@ -22,6 +23,22 @@ from rekep.utils import (
     get_callable_grasping_cost_fn,
     print_opt_debug_dict,
 )
+'''
+metadata.json
+{
+    "init_keypoint_positions": [
+        [-0.1457058783982955, -0.47766187961876, 0.98],
+        [-0.0144477656708159, 0.012521396914707113, 0.745],
+        [0.14099338570298237, 0.5722672713826932, 1.283],
+        [0.2693722882157947, -0.3018593983523729, 1.047],
+        [0.43524427390119413, -0.04595746991503292, 0.6970000000000001]
+    ],
+    "num_keypoints": 5,
+    "num_stages": 4,
+    "grasp_keypoints": [1, -1, 2, -1],
+    "release_keypoints": [-1, 1, -1, 2]
+}
+'''
 
 
 class MainR2D2:
@@ -45,7 +62,10 @@ class MainR2D2:
         # initialize solvers
         self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, None) # self.env.reset_joint_pos)
         self.path_solver = PathSolver(global_config['path_solver'], ik_solver, None) #self.env.reset_joint_pos)
-    
+
+        # env
+        self.env = R2D2Env(global_config['env'])
+        
     def load_rgbd_data(self, folder=None, frame=None):
         if folder is None:
             folder = 'data/rgbd/cloth-hack-1'
