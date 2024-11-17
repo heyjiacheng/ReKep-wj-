@@ -6,12 +6,9 @@ import pdb
 
 import argparse
 from rekep.environment import R2D2Env
-from rekep.keypoint_proposal import KeypointProposer
-from rekep.constraint_generation import ConstraintGenerator
 from rekep.ik_solver import FrankaIKSolver
 from rekep.subgoal_solver import SubgoalSolver
 from rekep.path_solver import PathSolver
-from rekep.visualizer import Visualizer
 import rekep.transform_utils as T
 
 from rekep.utils import (
