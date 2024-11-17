@@ -20,6 +20,8 @@ from rekep.utils import (
     get_callable_grasping_cost_fn,
     print_opt_debug_dict,
 )
+
+from r2d2_vision import R2D2Vision
 '''
 metadata.json
 {
@@ -63,9 +65,8 @@ class MainR2D2:
         np.random.seed(self.config['seed'])
         torch.manual_seed(self.config['seed'])
         torch.cuda.manual_seed(self.config['seed'])
-        # initialize keypoint proposer and constraint generator
-        self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
-        self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
+
+        self.vision = R2D2Vision(visualize=self.visualize)
 
         self.env = R2D2Env(global_config['env'])
         
@@ -77,42 +78,22 @@ class MainR2D2:
         self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, self.env.reset_joint_pos)
         self.path_solver = PathSolver(global_config['path_solver'], ik_solver, self.env.reset_joint_pos)
 
-  
-        
-    def load_rgbd_data(self, folder=None, frame=None):
-        if folder is None:
-            folder = 'data/rgbd/cloth-hack-1'
-        if frame is None:
-            frame = 10
-        rgb = np.load(f'{folder}/color_{frame:06d}.npy')
-        points = np.load(f'{folder}/depth_{frame:06d}.npy')
-        mask = np.load(f'{folder}/mask_{frame:06d}.npy')
-        print(f"Debug: Loaded RGB image with shape: {rgb.shape}")
-        print(f"Debug: Loaded point cloud with shape: {points.shape}")
-        print(f"Debug: Loaded mask with shape: {mask.shape}")
-        return rgb, points, mask
 
     @timer_decorator
     def perform_task(self, instruction, rekep_program_dir=None):
-  
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
-        if rekep_program_dir is None:
-            rgb, points, mask = self.load_rgbd_data()
-            keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, mask)
-            print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
-            if self.visualize:
-                self.visualizer.show_img(projected_img)
-            metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
-            rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
-            print(f'{bcolors.HEADER}Constraints generated{bcolors.ENDC}')
+        obj_list = ['cloth']
+        data_path = "/home/franka/R2D2_3dhat/images/current_images"
+        if 0:
+            realworld_rekep_program_dir = self.vision.perform_task(instruction, obj_list, data_path, 3)
+        else:
+            realworld_rekep_program_dir = rekep_program_dir
         # ====================================
-        # = execute
-        # ====================================
-        self._execute(rekep_program_dir)
+        self._execute(realworld_rekep_program_dir)
 
-
+    @timer_decorator
     def _execute(self, rekep_program_dir):
         # load metadata
         pdb.set_trace()
@@ -212,7 +193,7 @@ class MainR2D2:
                         return
                     # progress to next stage
                     self._update_stage(self.stage + 1)
-
+    @timer_decorator
     def _get_next_subgoal(self, from_scratch):
         pdb.set_trace()
         subgoal_constraints = self.constraint_fns[self.stage]['subgoal']
@@ -237,6 +218,7 @@ class MainR2D2:
             self.visualizer.visualize_subgoal(subgoal_pose)
         return subgoal_pose
 
+    @timer_decorator
     def _get_next_path(self, next_subgoal, from_scratch):
         pdb.set_trace()
         path_constraints = self.constraint_fns[self.stage]['path']

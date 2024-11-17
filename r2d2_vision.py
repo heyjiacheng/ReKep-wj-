@@ -41,7 +41,7 @@ def timer_decorator(func):
 
 
 @timer_decorator
-class MainVision:
+class R2D2Vision:
     def __init__(self, visualize=False):
         global_config = get_config(config_path="./configs/config.yaml")
         self.config = global_config['main']
@@ -103,13 +103,13 @@ class MainVision:
     @timer_decorator
     def perform_task(self, instruction,obj_list, data_path, frame_number):
         # BUG: name for  color is not consistent
-        color_path = os.path.join(data_path, f'color_{frame_number:06d}.npy')
-        depth_path = os.path.join(data_path, f'depth_{frame_number:06d}.npy')
+        color_path = os.path.join(data_path, f'fixed_camera_raw.png')
+        depth_path = os.path.join(data_path, f'fixed_camera_depth.npy')
 
         if not os.path.exists(color_path) or not os.path.exists(depth_path):
-            raise FileNotFoundError(f"Color or depth frame not found for frame {frame_number}")
+            raise FileNotFoundError(f"Color or depth frame not found for \n{color_path} \n or \n{depth_path}")
 
-        rgb = np.load(color_path)
+        rgb = cv2.cvtColor(cv2.imread(color_path), cv2.COLOR_BGR2RGB)
         depth = np.load(depth_path)
 
         print(f"Debug: Input image shape: {rgb.shape}") # (480, 640, 3)
@@ -117,13 +117,10 @@ class MainVision:
 
         # detect objects
         gdino = GroundingDINO()
-        rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(rgb_path, bgr)
         if isinstance(obj_list, str):
             obj_list = obj_list.split(',')  # 如果输入是逗号分隔的字符串
     
-        results = gdino.detect_objects(rgb_path, obj_list)
+        results = gdino.detect_objects(color_path, obj_list)
         self._show_objects(rgb, results.objects)
         # print(f"Debug: Detected {len(results)} objects")
         boxes = []
@@ -157,7 +154,7 @@ class MainVision:
         metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
         rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
-
+        return rekep_program_dir
         
     def _show_objects(self, rgb, results):
         import matplotlib.pyplot as plt
@@ -192,5 +189,5 @@ if __name__ == "__main__":
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
 
-    main = MainVision(visualize=args.visualize)
+    main = R2D2Vision(visualize=args.visualize)
     main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path, frame_number=args.frame_number)
