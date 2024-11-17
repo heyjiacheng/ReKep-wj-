@@ -131,7 +131,7 @@ class PathSolver:
         self.reset_joint_pos = reset_joint_pos
         self.last_opt_result = None
         # warmup
-        # self._warmup()
+        self._warmup()
 
     def _warmup(self):
         start_pose = np.array([0.0, 0.0, 0.3, 0, 0, 0, 1])

@@ -64,30 +64,49 @@ class RobotController:
     def __init__(self):
         self.joint_limits = {
             'position': {
-                'upper': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],  # 示例值，需要根据实际机器人调整
-                'lower': [-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0]
+                'upper': [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],  # Franka真实限制
+                'lower': [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
             },
             'velocity': {
-                'upper': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                'lower': [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
-            },
-            'effort': {
-                'upper': [87, 87, 87, 87, 12, 12, 12],
-                'lower': [-87, -87, -87, -87, -12, -12, -12]
+                'upper': [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100],
+                'lower': [-2.1750, -2.1750, -2.1750, -2.1750, -2.6100, -2.6100, -2.6100]
             }
         }
-
-    def clip_control(self, control, control_type='position'):
-        if control_type not in self.joint_limits:
-            print(f"Warning: Unknown control type {control_type}")
-            return control
-        upper = self.joint_limits[control_type]['upper']
-        lower = self.joint_limits[control_type]['lower']
         
-        n_joints = min(len(control), len(upper))
-        clipped = np.clip(control[:n_joints], lower[:n_joints], upper[:n_joints])
-        print(f"Clipping {control_type} control from {control} to {clipped}")
-        return clipped
+        self.current_joint_angles = np.zeros(7)
+        self.current_ee_pose = np.array([0.5, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0])
+        self.current_eef_position = np.array([0.5, 0.0, 0.5]) 
+        self.world2robot_homo = np.eye(4)  
+        self.gripper_state = 0.0
+
+    def get_relative_eef_position(self):
+        """
+        Mock version of get_relative_eef_position
+        Returns:
+            np.ndarray: [3,] array representing the end effector position in robot frame
+        """
+        return self.current_eef_position
+
+    def get_relative_eef_orientation(self):
+        """
+        Mock version of get_relative_eef_orientation
+        Returns:
+            np.ndarray: [4,] array representing the end effector orientation as quaternion [w,x,y,z]
+        """
+        return np.array([1.0, 0.0, 0.0, 0.0])  # 默认朝向
+    
+    def clip_control(self, control, control_type='position'):
+        return control 
+        # if control_type not in self.joint_limits:
+        #     print(f"Warning: Unknown control type {control_type}")
+        #     return control
+        # upper = self.joint_limits[control_type]['upper']
+        # lower = self.joint_limits[control_type]['lower']
+        
+        # n_joints = min(len(control), len(upper))
+        # clipped = np.clip(control[:n_joints], lower[:n_joints], upper[:n_joints])
+        # print(f"Clipping {control_type} control from {control} to {clipped}")
+        # return clipped
 
     def send_command(self, command, control_type='position'):
         """
@@ -103,7 +122,6 @@ class RobotController:
         return safe_command
 
 
-
 class R2D2Env:
     def __init__(self, config=None, verbose=False):
         self.video_cache = []
@@ -116,9 +134,11 @@ class R2D2Env:
         self.step_counter = 0 # TODO: remove
         
         self.robot = RobotController()
-        self.reset_joint_pos = np.zeros(7)  # Default home position
+        self.reset_joint_pos = np.array([0.5, 0, 0.5, 1, 0, 0, 0])  # Default home position
         self.gripper_state = 1.0  # 1.0 is open, 0.0 is closed
         self.ee_pose = np.array([0.5, 0, 0.5, 1, 0, 0, 0])  # Example initial pose [x,y,z, qw,qx,qy,qz]
+        
+        self.world2robot_homo = np.eye(4)
         print("Robot interface initialized")
         
     def get_ee_pose(self):
@@ -261,12 +281,12 @@ class R2D2Env:
     def close_gripper(self):
         """Close gripper"""
         print("Closing gripper")
-        self.gripper_state = "closed"
+        self.gripper_state = 1.0 # transfer to AnyGrasp
         
     def open_gripper(self):
         """Open gripper"""
         print("Opening gripper")
-        self.gripper_state = "open"
+        self.gripper_state = 0.0    
 
     def get_gripper_open_action(self):
         return -1.0
@@ -280,7 +300,7 @@ class R2D2Env:
     def is_grasping(self, candidate_obj=None):
         """Check if gripper is grasping"""
         # Could be enhanced with force sensor readings
-        return self.gripper_state == "closed"
+        return self.gripper_state == 1.0
 
     def get_collision_points(self, noise=True):
         """Get collision points of gripper"""
@@ -354,9 +374,9 @@ class R2D2Env:
     def _check_reached_ee(self, target_pos, target_xyzw, pos_threshold, rot_threshold):
         """
         this is supposed to be for true ee pose (franka hand) in robot frame
-        """
-        current_pos = self.robot.get_eef_position()
-        current_xyzw = self.robot.get_eef_orientation()
+        """ # TODO transform to robot frame
+        current_pos = self.get_ee_pose()[:3]
+        current_xyzw = self.get_ee_pose()[3:7]
         current_rotmat = T.quat2mat(current_xyzw)
         target_rotmat = T.quat2mat(target_xyzw)
         # calculate position delta
@@ -377,27 +397,51 @@ class R2D2Env:
         rot_errors = []
         count = 0
         while count < max_steps:
-            reached, pos_error, rot_error = self._check_reached_ee(target_pose_world[:3], target_pose_world[3:7], pos_threshold, rot_threshold)
+            reached, pos_error, rot_error = self._check_reached_ee(
+                target_pose_world[:3], 
+                target_pose_world[3:7], 
+                pos_threshold, 
+                rot_threshold
+            )
             pos_errors.append(pos_error)
             rot_errors.append(rot_error)
             if reached:
                 break
             # convert world pose to robot pose
             target_pose_robot = np.dot(self.world2robot_homo, T.convert_pose_quat2mat(target_pose_world))
-            # convert to relative pose to be used with the underlying controller
-            relative_position = target_pose_robot[:3, 3] - self.robot.get_relative_eef_position()
-            relative_quat = T.quat_distance(T.mat2quat(target_pose_robot[:3, :3]), self.robot.get_relative_eef_orientation())
-            assert isinstance(self.robot, Fetch), "this action space is only for fetch"
-            action = np.zeros(12)  # first 3 are base, which we don't use
-            action[4:7] = relative_position
-            action[7:10] = T.quat2axisangle(relative_quat)
-            action[10:] = [self.last_og_gripper_action, self.last_og_gripper_action]
-            # step the action
-            _ = self._step(action=action)
+            
+            # Franka的action空间: [7个关节角度 + 1个夹爪值]
+            action = np.zeros(8)  
+            # 前7维是关节角度 - 这里需要通过逆运动学(IK)计算
+            joint_angles = self.compute_ik(target_pose_robot)  # 需要实现IK
+            action[:7] = joint_angles
+            # 最后1维是夹爪
+            action[7] = self.gripper_state
+            
+            # 执行动作
+            self._step(action=action)
             count += 1
-        if count == max_steps:
-            print(f'{bcolors.WARNING}[environment.py | {get_clock_time()}] OSC pose not reached after {max_steps} steps (pos_error: {pos_errors[-1].round(4)}, rot_error: {np.rad2deg(rot_errors[-1]).round(4)}){bcolors.ENDC}')
 
+        if count == max_steps:
+            print(f'Pose not reached after {max_steps} steps (pos_error: {pos_errors[-1]:.4f}, rot_error: {np.rad2deg(rot_errors[-1]):.4f})')
+
+    def compute_ik(self, target_pose):
+        """Mock IK solver - 在实际应用中需要替换为真实的IK"""
+        # 这里返回一个合理范围内的关节角度
+        return np.zeros(7)  # 7个关节的角度
+
+    def _step(self, action):
+        """执行一步动作"""
+        # 模拟执行动作，更新机器人状态
+        joint_angles = action[:7]
+        gripper_action = action[7]
+        
+        # 更新状态
+        self.current_joint_angles = joint_angles
+        self.gripper_state = gripper_action
+        
+        # 通过正运动学更新末端执行器位置（在实际应用中需要从真实机器人读取）
+        # self.current_eef_position = self.compute_fk(joint_angles)  # 需要实现FK
 
 # class ReKepOGEnv:
 #     def __init__(self, config, scene_file, verbose=False):

@@ -21,7 +21,7 @@ class IKResult:
 # TODO use real IK solver
 class FrankaIKSolver:
     """Franka IK Solver"""
-    def __init__(self, world2robot_homo=None):
+    def __init__(self, reset_joint_pos, world2robot_homo=None):
         # DH parameters for Franka (simplified version)
         self.dh_params = {
             'd1': 0.333,   # Joint 1
@@ -38,7 +38,7 @@ class FrankaIKSolver:
         }
         
         # Default home position
-        self.reset_joint_pos = np.array([0, -np.pi/4, 0, -3*np.pi/4, 0, np.pi/2, np.pi/4])
+        self.reset_joint_pos = reset_joint_pos
         
         # Transform from world to robot base
         self.world2robot_homo = world2robot_homo if world2robot_homo is not None else np.eye(4)

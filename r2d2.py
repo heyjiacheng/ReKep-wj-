@@ -39,8 +39,22 @@ metadata.json
     "release_keypoints": [-1, 1, -1, 2]
 }
 '''
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message="xFormers is not available")
 
+import time
 
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Function {func.__name__} took {end_time - start_time:.2f} seconds to execute")
+        return result
+    return wrapper
+
+@timer_decorator
 class MainR2D2:
     def __init__(self, visualize=False):
         global_config = get_config(config_path="./configs/config.yaml")
@@ -56,15 +70,17 @@ class MainR2D2:
         self.keypoint_proposer = KeypointProposer(global_config['keypoint_proposer'])
         self.constraint_generator = ConstraintGenerator(global_config['constraint_generator'])
 
+        self.env = R2D2Env(global_config['env'])
+        
         ik_solver = FrankaIKSolver(
-            world2robot_homo=None, # self.env.world2robot_homo,
+            reset_joint_pos= self.env.reset_joint_pos,
+            world2robot_homo= self.env.world2robot_homo,
         )
         # initialize solvers
-        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, None) # self.env.reset_joint_pos)
-        self.path_solver = PathSolver(global_config['path_solver'], ik_solver, None) #self.env.reset_joint_pos)
+        self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, self.env.reset_joint_pos)
+        self.path_solver = PathSolver(global_config['path_solver'], ik_solver, self.env.reset_joint_pos)
 
-        # env
-        self.env = R2D2Env(global_config['env'])
+  
         
     def load_rgbd_data(self, folder=None, frame=None):
         if folder is None:
@@ -79,6 +95,7 @@ class MainR2D2:
         print(f"Debug: Loaded mask with shape: {mask.shape}")
         return rgb, points, mask
 
+    @timer_decorator
     def perform_task(self, instruction, rekep_program_dir=None):
   
         # ====================================
@@ -240,7 +257,9 @@ class MainR2D2:
         if self.visualize:
             self.visualizer.visualize_path(processed_path)
         return processed_path
-
+    
+    # TODO: check action sequence
+    @timer_decorator
     def _process_path(self, path):
         pdb.set_trace()
         # spline interpolate the path from the current ee pose
@@ -259,7 +278,7 @@ class MainR2D2:
         return ee_action_seq
 
     def _update_stage(self, stage):
-        pdb.set_trace()
+        # pdb.set_trace()
         # update stage
         self.stage = stage
         self.is_grasp_stage = self.program_info['grasp_keypoints'][self.stage - 1] != -1
