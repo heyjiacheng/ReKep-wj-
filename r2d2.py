@@ -184,14 +184,11 @@ class MainR2D2:
                 # ====================================
                 # = get optimized plan
                 # ====================================
-                # if self.last_sim_step_counter == self.env.step_counter:
-                #     print(f"{bcolors.WARNING}sim did not step forward within last iteration (HINT: adjust action_steps_per_iter to be larger or the pos_threshold to be smaller){bcolors.ENDC}")
                 next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter)
                 next_path = self._get_next_path(next_subgoal, from_scratch=self.first_iter)
                 self.first_iter = False
                 self.action_queue = next_path.tolist()
                 # self.last_sim_step_counter = self.env.step_counter
-
                 # ====================================
                 # = execute
                 # ====================================

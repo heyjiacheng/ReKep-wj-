@@ -4,8 +4,10 @@ import os
 import datetime
 import rekep.transform_utils as T
 # import trimesh
-import open3d as o3d
+# import open3d as o3d
 import imageio
+import json
+from pathlib import Path
 # OG related
 # import omnigibson as og
 # from omnigibson.macros import gm
@@ -17,9 +19,6 @@ import imageio
 # from og_utils import OGCamera
 # from omnigibson.robots.manipulation_robot import ManipulationRobot
 # from omnigibson.controllers.controller_base import ControlType, BaseController
-
-# Mujoco related
-# import mujoco
 
 
 from .utils import (
@@ -78,6 +77,7 @@ class RobotController:
         self.current_eef_position = np.array([0.5, 0.0, 0.5]) 
         self.world2robot_homo = np.eye(4)  
         self.gripper_state = 0.0
+        self.robot_state_path =  Path('./robot_state.json')
 
     def get_relative_eef_position(self):
         """
@@ -131,20 +131,48 @@ class R2D2Env:
         self.bounds_max = np.array(self.config['bounds_max'])
         self.interpolate_pos_step_size = self.config['interpolate_pos_step_size']
         self.interpolate_rot_step_size = self.config['interpolate_rot_step_size']
-        self.step_counter = 0 # TODO: remove
+        self.robot_state_path =  Path('./robot_state.json')
         
         self.robot = RobotController()
         self.reset_joint_pos = np.array([0.5, 0, 0.5, 1, 0, 0, 0])  # Default home position
         self.gripper_state = 1.0  # 1.0 is open, 0.0 is closed
-        self.ee_pose = np.array([0.5, 0, 0.5, 1, 0, 0, 0])  # Example initial pose [x,y,z, qw,qx,qy,qz]
-        
         self.world2robot_homo = np.eye(4)
         print("Robot interface initialized")
+          # Initialize robot state
+        self.update_robot_state()
         
-    def get_ee_pose(self):
+    def update_robot_state(self):
+        """Read and update robot state from json file"""
+        with open(self.robot_state_path, 'r') as f:
+            robot_state = json.load(f)
+            
+        self.current_joint_angles = np.array(robot_state['joint_info']['joint_positions'])
+        self.joint_velocities = np.array(robot_state['joint_info']['joint_velocities'])
+        self.joint_torques = np.array(robot_state['joint_info']['joint_torques'])
+        
+        self.ee_position = np.array(robot_state['ee_info']['position'])
+        self.ee_orientation = np.array(robot_state['ee_info']['orientation'])
+        self.ee_pose = np.concatenate([self.ee_position, self.ee_orientation])
+        
+        self.gripper_width = robot_state['gripper_info']['width']
+        self.gripper_state = robot_state['gripper_info']['state']
+        
+        self.collision_status = robot_state['safety_info']['collision_status']
+        self.safety_status = robot_state['safety_info']['safety_status']
+        
+        # Update misc information
+        self.world2robot_homo = np.array(robot_state['misc']['world2robot_homo'])
+        
+        return True
+    
+    def get_ee_pose(self,from_robot=False):
         """Get end-effector pose"""
-        print(f"Getting EE pose: {self.ee_pose}")
-        return self.ee_pose
+        if from_robot:
+            print(f"Getting EE pose from robot: {self.ee_pose}")
+            return self.ee_pose # TODO 
+        else:
+            print(f"Getting EE pose: {self.ee_pose}")
+            return self.ee_pose
     
     def get_ee_pos(self):
         """Get end-effector position"""
@@ -156,7 +184,7 @@ class R2D2Env:
     
     def compute_target_delta_ee(self, target_pose):
         target_pos, target_xyzw = target_pose[:3], target_pose[3:]
-        ee_pose = self.get_ee_pose()
+        ee_pose = self.get_ee_pose() 
         ee_pos, ee_xyzw = ee_pose[:3], ee_pose[3:]
         pos_diff = np.linalg.norm(ee_pos - target_pos)
         rot_diff = angle_between_quats(ee_xyzw, target_xyzw)

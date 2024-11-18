@@ -94,108 +94,76 @@ class MainR2D2:
         self._execute(realworld_rekep_program_dir)
 
     @timer_decorator
-    def _execute(self, rekep_program_dir):
-        # load metadata
-        pdb.set_trace()
+    def _execute(self, rekep_program_dir, init_ee_pose=np.array([-0.14, -0.47, 0.98, 0, 0, 0, 0])):
+        # Load program info and constraints
         with open(os.path.join(rekep_program_dir, 'metadata.json'), 'r') as f:
             self.program_info = json.load(f)
-        # register keypoints to be tracked
+        
+        # Register initial keypoints
         self.env.register_keypoints(self.program_info['init_keypoint_positions'])
-        # TODO : no update? world frame reset? 
-        # load constraints
-        self.constraint_fns = dict()
-        for stage in range(1, self.program_info['num_stages'] + 1):  # stage starts with 1
-            stage_dict = dict()
-            for constraint_type in ['subgoal', 'path']:
-                load_path = os.path.join(rekep_program_dir, f'stage{stage}_{constraint_type}_constraints.txt')
-                get_grasping_cost_fn = get_callable_grasping_cost_fn(self.env)  # special grasping function for VLM to call
-                stage_dict[constraint_type] = load_functions_from_txt(load_path, get_grasping_cost_fn) if os.path.exists(load_path) else []
-            self.constraint_fns[stage] = stage_dict
+        
+        # Load all stage constraints
+        self.constraint_fns = self._load_constraints(rekep_program_dir)
         
         # bookkeeping of which keypoints can be moved in the optimization
         self.keypoint_movable_mask = np.zeros(self.program_info['num_keypoints'] + 1, dtype=bool)
         self.keypoint_movable_mask[0] = True  # first keypoint is always the ee, so it's movable
 
-        # main loop
-        self.last_sim_step_counter = -np.inf
-        self._update_stage(1)
-        while True:
-            # pdb.set_trace() 
-
-            scene_keypoints = self.env.get_keypoint_positions() 
+        # Generate action sequences for all stages
+        self.all_actions = []
+        pdb.set_trace()
+        # Process each stage sequentially
+        for stage in range(1, self.program_info['num_stages'] + 1):
+            self._update_stage(stage)
             
-            self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)  # first keypoint is always the ee
-            self.curr_ee_pose = self.env.get_ee_pose()
-            self.curr_joint_pos = self.env.get_arm_joint_positions()
-            self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size'])
+            # Get current state
+            scene_keypoints = self.env.get_keypoint_positions()
+            self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)
+            self.curr_ee_pose = self.env.get_ee_pose() 
+            self.curr_joint_pos = self.env.get_arm_joint_positions() 
+            self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size']) # TODO ???
             self.collision_points = self.env.get_collision_points()
-            # ====================================
-            # = decide whether to backtrack
-            # ====================================
-            backtrack = False
-            if self.stage > 1:
-                path_constraints = self.constraint_fns[self.stage]['path']
-                for constraints in path_constraints:
-                    violation = constraints(self.keypoints[0], self.keypoints[1:])
-                    if violation > self.config['constraint_tolerance']:
-                        backtrack = True
-                        break
-            if backtrack:
-                # determine which stage to backtrack to based on constraints
-                for new_stage in range(self.stage - 1, 0, -1):
-                    path_constraints = self.constraint_fns[new_stage]['path']
-                    # if no constraints, we can safely backtrack
-                    if len(path_constraints) == 0:
-                        break
-                    # otherwise, check if all constraints are satisfied
-                    all_constraints_satisfied = True
-                    for constraints in path_constraints:
-                        violation = constraints(self.keypoints[0], self.keypoints[1:])
-                        if violation > self.config['constraint_tolerance']:
-                            all_constraints_satisfied = False
-                            break
-                    if all_constraints_satisfied:   
-                        break
-                print(f"{bcolors.HEADER}[stage={self.stage}] backtrack to stage {new_stage}{bcolors.ENDC}")
-                self._update_stage(new_stage)
-            else:
-                # ====================================
-                # = get optimized plan
-                # ====================================
-                # if self.last_sim_step_counter == self.env.step_counter:
-                #     print(f"{bcolors.WARNING}sim did not step forward within last iteration (HINT: adjust action_steps_per_iter to be larger or the pos_threshold to be smaller){bcolors.ENDC}")
-                next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter)
-                next_path = self._get_next_path(next_subgoal, from_scratch=self.first_iter)
-                self.first_iter = False
-                self.action_queue = next_path.tolist()
-                # self.last_sim_step_counter = self.env.step_counter
+            
+            # Generate actions for this stage
+            next_subgoal = self._get_next_subgoal(from_scratch=True)
+            next_path = self._get_next_path(next_subgoal, from_scratch=True)
+            # pdb.set_trace()
+            # Add gripper actions based on stage type
+            # True or False from metadata.json
+            if self.is_grasp_stage: 
+                next_path[-1, 7] = self.env.get_gripper_close_action() # Todo aliagn shape?
+                
+            elif self.is_release_stage:
+                next_path[-1, 7] = self.env.get_gripper_open_action() 
+                
+            self.all_actions.append(next_path)
 
-                # ====================================
-                # = execute
-                # ====================================
-                # determine if we proceed to the next stage
-                count = 0
-                while len(self.action_queue) > 0 and count < self.config['action_steps_per_iter']:
-                    next_action = self.action_queue.pop(0)
-                    precise = len(self.action_queue) == 0
-                    self.env.execute_action(next_action, precise=precise)
-                    count += 1
-                if len(self.action_queue) == 0:
-                    if self.is_grasp_stage:
-                        self._execute_grasp_action()
-                    elif self.is_release_stage:
-                        self._execute_release_action()
-                    # if completed, save video and return
-                    if self.stage == self.program_info['num_stages']: 
-                        self.env.sleep(2.0)
-                        save_path = self.env.save_video()
-                        print(f"{bcolors.OKGREEN}Video saved to {save_path}\n\n{bcolors.ENDC}")
-                        return
-                    # progress to next stage
-                    self._update_stage(self.stage + 1)
+        # Combine all action sequences
+        combined_actions = np.concatenate(self.all_actions, axis=0)
+
+        if 1 or self.stage == self.program_info['num_stages']: 
+            self.env.sleep(2.0)
+            # Save combined actions to txt file
+            save_path = os.path.join('./', 'combined_actions.txt')
+            np.savetxt(save_path, combined_actions, delimiter=',', fmt='%.6f')
+            print(f"{bcolors.OKGREEN}Actions saved to {save_path}\n\n{bcolors.ENDC}")
+            return
+
+    def _load_constraints(self, rekep_program_dir):
+        """Helper to load all stage constraints"""
+        constraint_fns = dict()
+        for stage in range(1, self.program_info['num_stages'] + 1):
+            stage_dict = dict()
+            for constraint_type in ['subgoal', 'path']:
+                load_path = os.path.join(rekep_program_dir, f'stage{stage}_{constraint_type}_constraints.txt')
+                get_grasping_cost_fn = get_callable_grasping_cost_fn(self.env)
+                stage_dict[constraint_type] = load_functions_from_txt(load_path, get_grasping_cost_fn) if os.path.exists(load_path) else []
+            constraint_fns[stage] = stage_dict
+        return constraint_fns
+
     @timer_decorator
     def _get_next_subgoal(self, from_scratch):
-        pdb.set_trace()
+        # pdb.set_trace()
         subgoal_constraints = self.constraint_fns[self.stage]['subgoal']
         path_constraints = self.constraint_fns[self.stage]['path']
         subgoal_pose, debug_dict = self.subgoal_solver.solve(self.curr_ee_pose,
@@ -220,7 +188,7 @@ class MainR2D2:
 
     @timer_decorator
     def _get_next_path(self, next_subgoal, from_scratch):
-        pdb.set_trace()
+        # pdb.set_trace()
         path_constraints = self.constraint_fns[self.stage]['path']
         path, debug_dict = self.path_solver.solve(self.curr_ee_pose,
                                                     next_subgoal,
@@ -240,7 +208,7 @@ class MainR2D2:
     # TODO: check action sequence
     @timer_decorator
     def _process_path(self, path):
-        pdb.set_trace()
+        # pdb.set_trace()
         # spline interpolate the path from the current ee pose
         full_control_points = np.concatenate([
             self.curr_ee_pose.reshape(1, -1),
@@ -278,18 +246,20 @@ class MainR2D2:
             self.keypoint_movable_mask[i] = self.env.is_grasping(keypoint_object)
 
     def _execute_grasp_action(self):
-        pdb.set_trace()
+        # pdb.set_trace()
         print("Grasp action")
     
     def _execute_release_action(self):
         print("Release action")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
-    parser.add_argument('--rekep_program_dir', type=str, required=True, help='keypoint constrain proposed folder')
+    parser.add_argument('--instruction', type=str, required=False, help='Instruction for the task')
+    parser.add_argument('--rekep_program_dir', type=str, required=False, help='keypoint constrain proposed folder')
     parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
     args = parser.parse_args()
 
+    args.instruction = "Fold the cloth step by step."
+    args.rekep_program_dir = "./vlm_query/cloth"
 
     main = MainR2D2(visualize=args.visualize)
     main.perform_task(instruction=args.instruction, rekep_program_dir=args.rekep_program_dir)
