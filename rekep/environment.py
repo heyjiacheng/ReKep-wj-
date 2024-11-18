@@ -147,14 +147,11 @@ class R2D2Env:
             robot_state = json.load(f)
             
         self.current_joint_angles = np.array(robot_state['joint_info']['joint_positions'])
-        self.joint_velocities = np.array(robot_state['joint_info']['joint_velocities'])
-        self.joint_torques = np.array(robot_state['joint_info']['joint_torques'])
         
         self.ee_position = np.array(robot_state['ee_info']['position'])
         self.ee_orientation = np.array(robot_state['ee_info']['orientation'])
         self.ee_pose = np.concatenate([self.ee_position, self.ee_orientation])
         
-        self.gripper_width = robot_state['gripper_info']['width']
         self.gripper_state = robot_state['gripper_info']['state']
         
         self.collision_status = robot_state['safety_info']['collision_status']
@@ -198,19 +195,20 @@ class R2D2Env:
             np.ndarray: Array of 7 joint positions for a 7-DOF arm
             [torso_lift, shoulder_pan, shoulder_lift, upperarm_roll, elbow_flex, forearm_roll, wrist_flex]
         """
-        # Return mock joint positions within reasonable ranges
-        mock_joint_positions = np.array([
-            0.0,    # torso_lift   (-0.1, 0.4)
-            0.0,    # shoulder_pan (-1.6, 1.6)
-            0.0,    # shoulder_lift (-1.25, 1.25)
-            0.0,    # upperarm_roll (-2.0, 2.0)
-            0.0,    # elbow_flex   (-2.0, 2.0)
-            0.0,    # forearm_roll (-2.0, 2.0)
-            0.0     # wrist_flex   (-1.8, 1.8)
-        ])
+        return self.current_joint_angles
+        # # Return mock joint positions within reasonable ranges
+        # mock_joint_positions = np.array([
+        #     0.0,    # torso_lift   (-0.1, 0.4)
+        #     0.0,    # shoulder_pan (-1.6, 1.6)
+        #     0.0,    # shoulder_lift (-1.25, 1.25)
+        #     0.0,    # upperarm_roll (-2.0, 2.0)
+        #     0.0,    # elbow_flex   (-2.0, 2.0)
+        #     0.0,    # forearm_roll (-2.0, 2.0)
+        #     0.0     # wrist_flex   (-1.8, 1.8)
+        # ])
         
             
-        return mock_joint_positions
+        # return mock_joint_positions
     # def execute_action(self, action, precise=True):
     #     """
     #     Execute robot action
@@ -340,14 +338,7 @@ class R2D2Env:
         ])
 
     def get_keypoint_positions(self):
-        """Mock keypoint positions"""
-        return np.array([
-            [-0.1457, -0.4776, 0.9800],
-            [-0.0144,  0.0125, 0.7450],
-            [ 0.1409,  0.5722, 1.2830],
-            [ 0.2693, -0.3018, 1.0470],
-            [ 0.4352, -0.0459, 0.6970],
-        ])
+        return self.keypoints
     
     def get_object_by_keypoint(self, keypoint_idx):
         # TODO: asscociate keypoints with closest object (mask?)

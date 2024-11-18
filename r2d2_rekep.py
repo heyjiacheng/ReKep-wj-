@@ -111,9 +111,16 @@ class MainR2D2:
 
         # Generate action sequences for all stages
         self.all_actions = []
-        pdb.set_trace()
+        # pdb.set_trace()
         # Process each stage sequentially
-        for stage in range(1, self.program_info['num_stages'] + 1):
+        # for stage in range(1, self.program_info['num_stages'] + 1):
+        if 1:
+            # Read stage from robot state file
+            with open('./robot_state.json', 'r') as f:
+                robot_state = json.load(f)
+                stage = robot_state.get('rekep_stage', 1)  # Default to stage 1 if not found
+            stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
+            stage = int(stage)
             self._update_stage(stage)
             
             # Get current state
@@ -130,11 +137,11 @@ class MainR2D2:
             # pdb.set_trace()
             # Add gripper actions based on stage type
             # True or False from metadata.json
-            if self.is_grasp_stage: 
-                next_path[-1, 7] = self.env.get_gripper_close_action() # Todo aliagn shape?
+            # if self.is_grasp_stage: 
+            #     next_path[-1, 7] = self.env.get_gripper_close_action() # Todo aliagn shape?
                 
-            elif self.is_release_stage:
-                next_path[-1, 7] = self.env.get_gripper_open_action() 
+            # elif self.is_release_stage:
+            #     next_path[-1, 7] = self.env.get_gripper_open_action() 
                 
             self.all_actions.append(next_path)
 
@@ -143,9 +150,9 @@ class MainR2D2:
 
         if 1 or self.stage == self.program_info['num_stages']: 
             self.env.sleep(2.0)
-            # Save combined actions to txt file
-            save_path = os.path.join('./', 'combined_actions.txt')
-            np.savetxt(save_path, combined_actions, delimiter=',', fmt='%.6f')
+            save_path = os.path.join('./outputs', 'action.json')
+            with open(save_path, 'w') as f:
+                json.dump({"ee_action_seq": combined_actions.tolist(), "stage": stage}, f, indent=4)
             print(f"{bcolors.OKGREEN}Actions saved to {save_path}\n\n{bcolors.ENDC}")
             return
 
