@@ -20,15 +20,18 @@ class IKResult:
     
 # TODO use real IK solver
 class FrankaIKSolver:
-    """Franka IK Solver"""
+    """Franka IK Solver for R2D2 implementation"""
     def __init__(self, reset_joint_pos, world2robot_homo=None):
-        # DH parameters for Franka (simplified version)
+        # DH parameters for Franka (Modified DH parameters)
         self.dh_params = {
-            'd1': 0.333,   # Joint 1
-            'd3': 0.316,   # Joint 3
-            'd5': 0.384,   # Joint 5
-            'd7': 0.107,   # End effector
-            'a7': 0.088,   # End effector
+            # [a, alpha, d, theta]
+            1: [0,     0,      0.333,  0],  # Joint 1
+            2: [0,     -np.pi/2, 0,      0],  # Joint 2
+            3: [0,     np.pi/2,  0.316,  0],  # Joint 3
+            4: [0.0825, np.pi/2,  0,      0],  # Joint 4
+            5: [-0.0825, -np.pi/2, 0.384,  0],  # Joint 5
+            6: [0,     np.pi/2,  0,      0],  # Joint 6
+            7: [0.088,  np.pi/2,  0.107,  0],  # Joint 7 (end effector)
         }
         
         # Joint limits (in radians)
@@ -37,57 +40,162 @@ class FrankaIKSolver:
             'upper': np.array([2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973])
         }
         
-        # Default home position
         self.reset_joint_pos = reset_joint_pos
-        
-        # Transform from world to robot base
         self.world2robot_homo = world2robot_homo if world2robot_homo is not None else np.eye(4)
+        self.robot_state_path = "/path/to/robot_state.json"
 
-    def transform_pose(self, pose_homo):
-        """Transform pose from world frame to robot base frame"""
-        return np.dot(self.world2robot_homo, pose_homo)
-    
+    def _dh_matrix(self, a, alpha, d, theta):
+        """Calculate transformation matrix from DH parameters"""
+        ct = np.cos(theta)
+        st = np.sin(theta)
+        ca = np.cos(alpha)
+        sa = np.sin(alpha)
+        
+        return np.array([
+            [ct, -st*ca, st*sa, a*ct],
+            [st, ct*ca, -ct*sa, a*st],
+            [0, sa, ca, d],
+            [0, 0, 0, 1]
+        ])
+
+    def forward_kinematics(self, joint_angles):
+        """
+        Compute forward kinematics using DH parameters
+        
+        Args:
+            joint_angles: array of 7 joint angles in radians
+            
+        Returns:
+            4x4 homogeneous transformation matrix for end effector pose
+        """
+        T = np.eye(4)
+        
+        for i in range(7):
+            a, alpha, d, _ = self.dh_params[i+1]
+            theta = joint_angles[i]
+            Ti = self._dh_matrix(a, alpha, d, theta)
+            T = T @ Ti
+            
+        return T
+
+    def _jacobian(self, joint_angles):
+        """Calculate geometric Jacobian"""
+        J = np.zeros((6, 7))
+        T = np.eye(4)
+        p = np.zeros((8, 3))  # Position of each joint including end effector
+        
+        # Forward pass to get all joint positions
+        for i in range(7):
+            a, alpha, d, _ = self.dh_params[i+1]
+            theta = joint_angles[i]
+            Ti = self._dh_matrix(a, alpha, d, theta)
+            T = T @ Ti
+            p[i+1] = T[:3, 3]
+        
+        # Calculate Jacobian
+        z = np.zeros((8, 3))  # z axis of each frame
+        T = np.eye(4)
+        z[0] = T[:3, 2]
+        
+        for i in range(7):
+            a, alpha, d, _ = self.dh_params[i+1]
+            theta = joint_angles[i]
+            Ti = self._dh_matrix(a, alpha, d, theta)
+            T = T @ Ti
+            z[i+1] = T[:3, 2]
+            
+            # Linear velocity component
+            J[:3, i] = np.cross(z[i], (p[7] - p[i]))
+            # Angular velocity component
+            J[3:, i] = z[i]
+            
+        return J
+
+    def _numerical_ik(self, target_pose, initial_joints, max_iter=100, tol=1e-3):
+        """
+        Numerical IK using damped least squares method
+        """
+        current_joints = initial_joints.copy()
+        
+        for i in range(max_iter):
+            current_pose = self.forward_kinematics(current_joints)
+            
+            # Calculate pose error
+            pos_error = target_pose[:3, 3] - current_pose[:3, 3]
+            rot_error = 0.5 * np.cross(current_pose[:3, :3].T[0], target_pose[:3, :3].T[0]) + \
+                       0.5 * np.cross(current_pose[:3, :3].T[1], target_pose[:3, :3].T[1]) + \
+                       0.5 * np.cross(current_pose[:3, :3].T[2], target_pose[:3, :3].T[2])
+            
+            error = np.concatenate([pos_error, rot_error])
+            
+            if np.linalg.norm(error) < tol:
+                return True, current_joints, np.linalg.norm(pos_error), np.linalg.norm(rot_error)
+            
+            # Calculate Jacobian
+            J = self._jacobian(current_joints)
+            
+            # Damped least squares
+            lambda_ = 0.5
+            delta_theta = J.T @ np.linalg.inv(J @ J.T + lambda_**2 * np.eye(6)) @ error
+            
+            # Update joints with limits
+            current_joints = np.clip(
+                current_joints + delta_theta,
+                self.joint_limits['lower'],
+                self.joint_limits['upper']
+            )
+            
+        return False, current_joints, np.linalg.norm(pos_error), np.linalg.norm(rot_error)
+
     def solve(self, target_pose_homo, 
              position_tolerance=0.01,
              orientation_tolerance=0.05,
              max_iterations=150,
              initial_joint_pos=None):
         """
-        Mock IK solver that returns a valid IKResult
+        Solve IK for Franka robot
         """
         # Transform target pose to robot base frame
         robot_pose = self.transform_pose(target_pose_homo)
         
-        # Extract position and rotation
-        target_pos = robot_pose[:3, 3]
-        target_rot = robot_pose[:3, :3]
-        
-        # Use initial joint positions or default
+        # Get initial joint positions
         if initial_joint_pos is None:
-            initial_joint_pos = self.reset_joint_pos
+            robot_state = self._read_robot_state()
+            if robot_state:
+                initial_joint_pos = np.array(robot_state['joint_info']['joint_positions'])
+            else:
+                initial_joint_pos = self.reset_joint_pos
         
-        # 简单的工作空间检查
-        in_workspace = np.all(np.abs(target_pos) < 1.0)
+        # Solve IK
+        success, joint_positions, pos_error, rot_error = self._numerical_ik(
+            robot_pose,
+            initial_joint_pos,
+            max_iter=max_iterations,
+            tol=min(position_tolerance, orientation_tolerance)
+        )
         
-        if in_workspace:
-            # 成功情况
-            return IKResult(
-                success=True,
-                joint_positions=initial_joint_pos,  # 使用初始关节角度或默认值
-                error_pos=0.01,
-                error_rot=0.01,
-                num_descents=max_iterations // 2
-            )
-        else:
-            # 失败情况，但仍然返回一个有效的IKResult
-            return IKResult(
-                success=False,
-                joint_positions=self.reset_joint_pos,  # 使用重置位置
-                error_pos=1.0,
-                error_rot=1.0,
-                num_descents=max_iterations
-            )
-    
+        # Verify solution
+        if success:
+            # Additional workspace and joint limit checks
+            if self._check_workspace_limits(robot_pose[:3, 3]) and \
+               self._check_joint_limits(joint_positions):
+                return IKResult(
+                    success=True,
+                    joint_positions=joint_positions,
+                    error_pos=pos_error,
+                    error_rot=rot_error,
+                    num_descents=max_iterations
+                )
+        
+        return IKResult(
+            success=False,
+            joint_positions=self.reset_joint_pos,
+            error_pos=pos_error,
+            error_rot=rot_error,
+            num_descents=max_iterations
+        )
+
+    # NOT used 
     def forward_kinematics(self, joint_positions):
         """
         Compute forward kinematics (placeholder)
@@ -193,22 +301,21 @@ class IKSolver:
             ik_results (lazy.lula.CyclicCoordDescentIkResult): IK result object containing the joint positions and other information.
         """
         # convert target pose to robot base frame
-        # target_pose_robot = np.dot(self.world2robot_homo, target_pose_homo)
-        # target_pose_pos = target_pose_robot[:3, 3]
-        # target_pose_rot = target_pose_robot[:3, :3]
-        # ik_target_pose = lazy.lula.Pose3(lazy.lula.Rotation3(target_pose_rot), target_pose_pos)
+        target_pose_robot = np.dot(self.world2robot_homo, target_pose_homo)
+        target_pose_pos = target_pose_robot[:3, 3]
+        target_pose_rot = target_pose_robot[:3, :3]
+        ik_target_pose = lazy.lula.Pose3(lazy.lula.Rotation3(target_pose_rot), target_pose_pos)
         # Set the cspace seed and tolerance
         initial_joint_pos = self.reset_joint_pos if initial_joint_pos is None else np.array(initial_joint_pos)
-        # self.config.cspace_seeds = [initial_joint_pos]
-        # self.config.position_tolerance = position_tolerance
-        # self.config.orientation_tolerance = orientation_tolerance
-        # self.config.ccd_position_weight = position_weight
-        # self.config.ccd_orientation_weight = orientation_weight
-        # self.config.max_num_descents = max_iterations
+        self.config.cspace_seeds = [initial_joint_pos]
+        self.config.position_tolerance = position_tolerance
+        self.config.orientation_tolerance = orientation_tolerance
+        self.config.ccd_position_weight = position_weight
+        self.config.ccd_orientation_weight = orientation_weight
+        self.config.max_num_descents = max_iterations
         # Compute target joint positions
-        return None
-        # ik_results = lazy.lula.compute_ik_ccd(self.kinematics, ik_target_pose, self.eef_name, self.config)
-        # return ik_results
+        ik_results = lazy.lula.compute_ik_ccd(self.kinematics, ik_target_pose, self.eef_name, self.config)
+        return ik_results
 
 
 if __name__ == "__main__":

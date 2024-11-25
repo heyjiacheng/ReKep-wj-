@@ -1,5 +1,5 @@
 python r2d2_vision.py \
-    --instruction "Fold the cloth step by step." \
+    --instruction "Open the fridge." \
     --data_path "/home/franka/R2D2_3dhat/images/current_images" \
     --frame_number 10 \
     --visualize

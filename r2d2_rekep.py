@@ -80,13 +80,14 @@ class MainR2D2:
 
 
     @timer_decorator
-    def perform_task(self, instruction, rekep_program_dir=None):
+    def perform_task(self, instruction, obj_list, rekep_program_dir=None):
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
-        obj_list = ['cloth']
+        # obj_list = ['scissors']
         data_path = "/home/franka/R2D2_3dhat/images/current_images"
-        if 0:
+        
+        if 1:
             realworld_rekep_program_dir = self.vision.perform_task(instruction, obj_list, data_path, 3)
         else:
             realworld_rekep_program_dir = rekep_program_dir
@@ -94,7 +95,7 @@ class MainR2D2:
         self._execute(realworld_rekep_program_dir)
 
     @timer_decorator
-    def _execute(self, rekep_program_dir, init_ee_pose=np.array([-0.14, -0.47, 0.98, 0, 0, 0, 0])):
+    def _execute(self, rekep_program_dir):
         # Load program info and constraints
         with open(os.path.join(rekep_program_dir, 'metadata.json'), 'r') as f:
             self.program_info = json.load(f)
@@ -119,7 +120,7 @@ class MainR2D2:
             with open('./robot_state.json', 'r') as f:
                 robot_state = json.load(f)
                 stage = robot_state.get('rekep_stage', 1)  # Default to stage 1 if not found
-            stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
+            # stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
             stage = int(stage)
             self._update_stage(stage)
             
@@ -266,7 +267,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.instruction = "Fold the cloth step by step."
-    args.rekep_program_dir = "./vlm_query/cloth"
-
+    args.obj_list = ['cloth']
     main = MainR2D2(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, rekep_program_dir=args.rekep_program_dir)
+    main.perform_task(instruction=args.instruction, obj_list=args.obj_list)

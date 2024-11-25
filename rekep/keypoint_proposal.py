@@ -182,6 +182,8 @@ class KeypointProposer:
             # consider only foreground features
             obj_features_flat = features_flat[binary_mask.reshape(-1)]
             feature_pixels = np.argwhere(binary_mask)
+            # TODO 2d cluster or 3d cluster?
+            # reshape?
             feature_points = points[binary_mask.reshape(-1)]
         
             # reduce dimensionality to be less sensitive to noise and texture
