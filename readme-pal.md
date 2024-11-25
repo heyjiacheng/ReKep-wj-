@@ -1,5 +1,20 @@
 # TODO
 
+## 2024-11-23
+- [ ] add DINO-X into system
+    - [ ] prompt free detection
+    - [ ] prompt guided detection
+- [ ] add more visualization method
+- [ ] test DepthPro 
+    - [x] least square method
+    - [ ] gaussian process
+    - [ ] ask GPT for help
+    - [x] ask SYZ for help
+- [ ] Kinemtic
+    - [ ] MEAM5200 note from Jerry
+    - [ ] ECE470 3 slides per day
+    - [ ] ask  
+- 
 ```bash
 configs/ # rekep only
 data/    # temp data

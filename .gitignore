@@ -13,6 +13,7 @@ input_video_processed.mp4
 temp_frame.jpg
 data/gdino_objects.png
 data/temp_rgb.png
+data/*
 
 # Caches and Datasets
 cache/
