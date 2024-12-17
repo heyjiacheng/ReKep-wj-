@@ -20,8 +20,6 @@ SAM2_CKPT =  '/home/franka/ACReKep/model_ckpt/sam2_hiera_small.pt'
 SMA2_CFIG = "./configs/sam2/sam2_hiera_s.yaml"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-
 # from rekep.perception.realsense import initialize_realsense
 from rekep.perception.gdino import GroundingDINO
 
@@ -98,13 +96,13 @@ class R2D2Vision:
         z = depth.flatten() * depth_scale
         x = np.multiply(x, z)
         y = np.multiply(y, z)
-
     
         points = np.stack((x, y, z), axis = -1)
+        points = np.nan_to_num(points, nan=0.0)
         return points    
     
     @timer_decorator
-    def perform_task(self, instruction,obj_list, data_path, frame_number):
+    def perform_task(self, instruction,obj_list, data_path):
         color_path = os.path.join(data_path, 'varied_camera_raw.png')
         depth_path = os.path.join(data_path, 'varied_camera_depth.npy')
         
@@ -123,6 +121,7 @@ class R2D2Vision:
         cv2.imwrite(f'./data/r2d2_vision/zed/color_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.png', rgb)
         np.save(f'./data/r2d2_vision/zed/depth_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.npy', depth)
         
+        # TODO: add DINOX mode
         if obj_list:
             print(f"\033[92mDebug: Manual mask mode\033[0m")
             sam_model = build_sam2(SMA2_CFIG, SAM2_CKPT).to(device)
@@ -158,6 +157,7 @@ class R2D2Vision:
 
         # Point cloud
         points = self.depth_to_pointcloud(depth)
+        # points = depth
         print(f"\033[92mDebug: Generated point cloud with shape: {points.shape}\033[0m")
         # import pdb; pdb.set_trace()
         # ====================================
@@ -193,17 +193,22 @@ class R2D2Vision:
         plt.title('Annotated Image with Keypoints')
         plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
         plt.close()
-
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--instruction', type=str, required=True, help='Instruction for the task')
+    parser.add_argument('--instruction', type=str, required=False, help='Instruction for the task')
     parser.add_argument('--obj_list', type=str, required=False, help='String List of objects to detect')
-    parser.add_argument('--data_path', type=str, required=True, help='Path to the directory containing color and depth frames')
-    parser.add_argument('--frame_number', type=int, required=True, help='Frame number to process')
+    parser.add_argument('--data_path', type=str, required=False, help='Path to the directory containing color and depth frames')
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
+    
+    if args.instruction is None:
+        # args.instruction = "Put down the green package into drawer."
+        args.instruction = "Put the green package in the drawer, the robot is already grasping the package \
+                            and the package is already aligned with the drawer opening."
+    if args.data_path is None:
+        args.data_path = "/home/franka/R2D2_3dhat/images/current_images"
 
     main = R2D2Vision(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path, frame_number=args.frame_number)
+    rekep_program_dir = main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path)
+    print(f"\033[92mDebug: rekep_program_dir: {rekep_program_dir}\033[0m")

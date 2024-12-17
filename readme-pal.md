@@ -1,19 +1,44 @@
-# TODO
+# Readme: development log
 
-## 2024-11-23
+
+## Experiment
+> work as a baseline for Zeromimic 
+- [ ] Pouring tea
+- [ ] Put the green package in the drawer
+- [ ] Close the drawer
+- [ ] Open the drawer
+- [ ] Put down the green package
+
+
+## TODO
+
+### 2024-12-17
+- [ ] What is different from ReKeP’s own codebase
+    - [ ] Plus
+        - [ ] better clustering for keypoint extraction
+    - [ ] Minus
+        - [ ] multiple stage: bug
+        - [ ] ik cost - doensn’t matter
+        - [ ] recovery
+- [ ] stage decomposition  
+    - store: in robot_state.json
+    - load: solely in r2d2_rekep.py
+    - question: keypoint following?
+- [ ] Code-as-Monitor, another work with ReKeP as baseline in Omnigibson, pour tea result is 20, wherweas ReKeP official result is ~70%
+
+### 2024-11-23
 - [ ] add DINO-X into system
-    - [ ] prompt free detection
+    - [x] prompt free detection
     - [ ] prompt guided detection
 - [ ] add more visualization method
-- [ ] test DepthPro 
+- [x] test DepthPro 
     - [x] least square method
-    - [ ] gaussian process
-    - [ ] ask GPT for help
+    - [x] gaussian process
+    - [x] ask GPT for help
     - [x] ask SYZ for help
 - [ ] Kinemtic
-    - [ ] MEAM5200 note from Jerry
-    - [ ] ECE470 3 slides per day
-    - [ ] ask  
+    - [x] MEAM5200 note
+    - [x] ECE470 note
 - 
 ```bash
 configs/ # rekep only

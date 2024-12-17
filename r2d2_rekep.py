@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import json
 import os
+import sys
 import pdb 
 
 import argparse
@@ -80,14 +81,15 @@ class MainR2D2:
 
 
     @timer_decorator
-    def perform_task(self, instruction, obj_list, rekep_program_dir=None):
+    def perform_task(self, instruction, obj_list=None, rekep_program_dir=None):
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
         # obj_list = ['scissors']
+        
         data_path = "/home/franka/R2D2_3dhat/images/current_images"
         
-        if 1:
+        if rekep_program_dir is None:
             realworld_rekep_program_dir = self.vision.perform_task(instruction, obj_list, data_path, 3)
         else:
             realworld_rekep_program_dir = rekep_program_dir
@@ -119,7 +121,7 @@ class MainR2D2:
             # Read stage from robot state file
             with open('./robot_state.json', 'r') as f:
                 robot_state = json.load(f)
-                stage = robot_state.get('rekep_stage', 1)  # Default to stage 1 if not found
+                stage = robot_state.get('rekep_state', 1)  # Default to stage 1 if not found
             # stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
             stage = int(stage)
             self._update_stage(stage)
@@ -127,7 +129,7 @@ class MainR2D2:
             # Get current state
             scene_keypoints = self.env.get_keypoint_positions()
             self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)
-            self.curr_ee_pose = self.env.get_ee_pose() 
+            self.curr_ee_pose = self.env.get_ee_pose()  # TODO check, may be constant? 
             self.curr_joint_pos = self.env.get_arm_joint_positions() 
             self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size']) # TODO ???
             self.collision_points = self.env.get_collision_points()
@@ -186,8 +188,8 @@ class MainR2D2:
                                                             from_scratch=from_scratch)
         subgoal_pose_homo = T.convert_pose_quat2mat(subgoal_pose)
         # if grasp stage, back up a bit to leave room for grasping
-        if self.is_grasp_stage:
-            subgoal_pose[:3] += subgoal_pose_homo[:3, :3] @ np.array([-self.config['grasp_depth'] / 2.0, 0, 0])
+        # if self.is_grasp_stage:
+        #     subgoal_pose[:3] += subgoal_pose_homo[:3, :3] @ np.array([-self.config['grasp_depth'] / 2.0, 0, 0])
         debug_dict['stage'] = self.stage
         print_opt_debug_dict(debug_dict)
         if self.visualize:
@@ -266,7 +268,20 @@ if __name__ == "__main__":
     parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
     args = parser.parse_args()
 
-    args.instruction = "Fold the cloth step by step."
-    args.obj_list = ['cloth']
+    # args.instruction = "Put the green package in the drawer, the robot is already grasping the package and the package is already aligned with the drawer opening."
+    # args.obj_list = ['cloth']
+
+    vlm_query_dir = "/home/franka/R2D2_3dhat/ReKep/vlm_query/"
+
+    vlm_dirs = [os.path.join(vlm_query_dir, d) for d in os.listdir(vlm_query_dir) 
+                if os.path.isdir(os.path.join(vlm_query_dir, d))]
+    
+    if vlm_dirs:
+        newest_rekep_dir = max(vlm_dirs, key=os.path.getmtime)
+        print(f"\033[92mUsing most recent directory: {newest_rekep_dir}\033[0m")
+    else:
+        print("No directories found under vlm_query")
+        sys.exit(1)
+
     main = MainR2D2(visualize=args.visualize)
-    main.perform_task(instruction=args.instruction, obj_list=args.obj_list)
+    main.perform_task(instruction=args.instruction, rekep_program_dir=newest_rekep_dir)
