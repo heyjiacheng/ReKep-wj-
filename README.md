@@ -1,8 +1,19 @@
-# Reproduction at GRASP Lab
-- Tony Wang, weclome to contact at: tonyw3@seas.upenn.edu
-- [x] vision pipeline
-- [ ] Mujuco pipeline
-- [ ] real world pipeline
+# ReKep Reproduction at GRASP Lab
+
+12/21/2024
+
+Author: Tony Wang, weclome to contact at: tonyw3@seas.upenn.edu
+
+- [x] vision pipeline: ./r2d2_vision.py
+- [x] action pipeline: ./r2d2_rekep.py
+- [x] real world experiments: Please refer to VLM_query/readme.md
+    - [x] close drawer: 6/10
+    - [x] open drawer: 0/10
+    - [x] place the bag into the drawer: 4/10
+    <!-- - [x] pour object into pot: 6/10 -->
+
+> All the experiments are conducted in 'Autonomous' mode. In comparision to 'ZeroMimic: Distilling Robotic Manipulation Skills from Web Videos' [https://zeromimic.github.io/](https://zeromimic.github.io/). 
+> More experiments and details please refer Appendix B in the paper.
 
 ## ReKep: Spatio-Temporal Reasoning of Relational Keypoint Constraints for Robotic Manipulation
 
