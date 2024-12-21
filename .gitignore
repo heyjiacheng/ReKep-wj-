@@ -11,6 +11,9 @@ output_videos/
 input_videos/
 input_video_processed.mp4
 temp_frame.jpg
+data/gdino_objects.png
+data/temp_rgb.png
+data/*
 
 # Caches and Datasets
 cache/
@@ -21,6 +24,7 @@ data/rgbd/
 data/disp/
 data/gdino_objects.png
 data/temp_rgb.png
+log/
 
 # Distribution / packaging
 .Python
@@ -160,3 +164,4 @@ dmypy.json
 # Mac OS
 .DS_Store
 
+outputs/

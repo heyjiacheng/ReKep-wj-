@@ -114,7 +114,7 @@ class ConstraintGenerator:
             if isinstance(v, np.ndarray):
                 metadata[k] = v.tolist()
         with open(os.path.join(self.task_dir, 'metadata.json'), 'w') as f:
-            json.dump(metadata, f)
+            json.dump(metadata, f, indent=4) # TODO: check time usage
         print(f"Metadata saved to {os.path.join(self.task_dir, 'metadata.json')}")
 
     def generate(self, img, instruction, metadata):

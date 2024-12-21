@@ -47,7 +47,7 @@ Suppose you are controlling a robot to perform manipulation tasks by writing con
 - Inputs to the constraints are as follows:
   - `end_effector`: np.array of shape `(3,)` representing the end-effector position.
   - `keypoints`: np.array of shape `(K, 3)` representing the keypoint positions.
-- For any path constraint that requires the robot to be still grasping a keypoint `i`, you may use the provided function `get_grasping_cost_by_keypoint_idx` by calling `return get_grasping_cost_by_keypoint_idx(i)` where `i` is the index of the keypoint. 
+<!-- - For any path constraint that requires the robot to be still grasping a keypoint `i`, you may use the provided function `get_grasping_cost_by_keypoint_idx` by calling `return get_grasping_cost_by_keypoint_idx(i)` where `i` is the index of the keypoint.  DELETED -->
 - Inside of each function, you may use native Python functions, any NumPy functions, and the provided `get_grasping_cost_by_keypoint_idx` function.
 - For grasping stage, you should only write one sub-goal constraint that associates the end-effector with a keypoint. No path constraints are needed.
 - In order to move a keypoint, its associated object must be grasped in one of the previous stages.
@@ -57,6 +57,7 @@ Suppose you are controlling a robot to perform manipulation tasks by writing con
 - You may use multiple keypoints to specify a surface or volume.
 - The keypoints marked on the image start with index 0, same as the given argument `keypoints` array.
 - For a point `i` to be relative to another point `j`, the function should define an `offsetted_point` variable that has the delta added to keypoint `j and then calculate the norm of the xyz coordinates of the keypoint `i` and the `offsetted_point`.
+- The camera and given image is at the right side of the robot. So the postive x-axis is pointing to the right, postive y-axis is pointing to the top, and postive z-axis is pointing to the front (deeper into the scene).
 - If you would like to specify a location not marked by a keypoint, try using multiple keypoints to specify the location (e.g., you may take the mean of multiple keypoints if the desired location is in the center of those keypoints).
 
 **Structure your output in a single python code block as follows:**
@@ -106,4 +107,9 @@ release_keypoints = [?, ..., ?]
 
 ## Query
 Query Task: "{instruction}"
+
+Image direction: 
+- x-axis is pointing to the right (right from the robot if x increases)
+- y-axis is pointing to the top (higher from the robot if y increases)
+- z-axis is pointing to the front (farer from the robot if z increases)
 Query Image:

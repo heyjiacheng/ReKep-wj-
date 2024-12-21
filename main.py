@@ -2,19 +2,19 @@ import torch
 import numpy as np
 import json
 import os
-import pdb 
-
 import argparse
-from environment import ReKepOGEnv
-from keypoint_proposal import KeypointProposer
-from constraint_generation import ConstraintGenerator
-from ik_solver import IKSolver
-from subgoal_solver import SubgoalSolver
-from path_solver import PathSolver
-from visualizer import Visualizer
-import transform_utils as T
+from rekep.environment import ReKepOGEnv
+from rekep.keypoint_proposal import KeypointProposer
+from rekep.constraint_generation import ConstraintGenerator
+from rekep.ik_solver import IKSolver
+from rekep.subgoal_solver import SubgoalSolver
+from rekep.path_solver import PathSolver
+from rekep.visualizer import Visualizer
+import rekep.transform_utils as T
+
 from omnigibson.robots.fetch import Fetch
-from utils import (
+
+from rekep.utils import (
     bcolors,
     get_config,
     load_functions_from_txt,
@@ -269,16 +269,17 @@ class Main:
     def _execute_release_action(self):
         self.env.open_gripper()
 
-class TaskManager:
-    def __init__(self):
-        self.task_list = {
-        'pen': {
-            'scene_file': './configs/og_scene_file_pen.json',
-            'instruction': 'reorient the white pen and drop it upright into the black pen holder',
-            'rekep_program_dir': './vlm_query/pen',
-            'disturbance_seq': {1: self.stage1_disturbance_seq, 2: self.stage2_disturbance_seq, 3: self.stage3_disturbance_seq},
-            },
-    }
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--task', type=str, default='pen', help='task to perform')
+    parser.add_argument('--use_cached_query', action='store_true', help='instead of querying the VLM, use the cached query')
+    parser.add_argument('--apply_disturbance', action='store_true', help='apply disturbance to test the robustness')
+    parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
+    args = parser.parse_args()
+
+    if args.apply_disturbance:
+        assert args.task == 'pen' and args.use_cached_query, 'disturbance sequence is only defined for cached scenario'
+
     # ====================================
     # = pen task disturbance sequence
     # ====================================
@@ -366,25 +367,18 @@ class TaskManager:
             yield disturbance(counter)
             counter += 1
 
-    def pen_task(self,args):     
-        task = self.task_list['pen']
-        scene_file = task['scene_file']
-        instruction = task['instruction']
-        main = Main(scene_file, visualize=args.visualize)
-        main.perform_task(instruction,
+    task_list = {
+        'pen': {
+            'scene_file': './configs/og_scene_file_pen.json',
+            'instruction': 'reorient the white pen and drop it upright into the black pen holder',
+            'rekep_program_dir': './vlm_query/pen',
+            'disturbance_seq': {1: stage1_disturbance_seq, 2: stage2_disturbance_seq, 3: stage3_disturbance_seq},
+            },
+    }
+    task = task_list['pen']
+    scene_file = task['scene_file']
+    instruction = task['instruction']
+    main = Main(scene_file, visualize=args.visualize)
+    main.perform_task(instruction,
                     rekep_program_dir=task['rekep_program_dir'] if args.use_cached_query else None,
                     disturbance_seq=task.get('disturbance_seq', None) if args.apply_disturbance else None)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='pen', help='task to perform')
-    parser.add_argument('--use_cached_query', action='store_true', help='instead of querying the VLM, use the cached query')
-    parser.add_argument('--apply_disturbance', action='store_true', help='apply disturbance to test the robustness')
-    parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
-    args = parser.parse_args()
-
-    if args.apply_disturbance:
-        assert args.task == 'pen' and args.use_cached_query, 'disturbance sequence is only defined for cached scenario'
-
-    task_manager = TaskManager()
-    task_manager.pen_task(args)

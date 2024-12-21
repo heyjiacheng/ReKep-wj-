@@ -3,8 +3,14 @@ import time
 import copy
 from scipy.optimize import dual_annealing, minimize
 from scipy.interpolate import RegularGridInterpolator
-import transform_utils as T
-from utils import (
+from .transform_utils import (
+    euler2quat,
+    pose2mat,
+    quat2euler
+) 
+
+
+from .utils import (
     transform_keypoints,
     calculate_collision_cost,
     normalize_vars,
@@ -30,8 +36,7 @@ def objective(opt_vars,
     debug_dict = {}
     # unnormalize variables and do conversion
     opt_pose = unnormalize_vars(opt_vars, og_bounds)
-    opt_pose_homo = T.pose2mat([opt_pose[:3], T.euler2quat(opt_pose[3:])])
-
+    opt_pose_homo = pose2mat([opt_pose[:3], euler2quat(opt_pose[3:])])
     cost = 0
     # collision cost
     if collision_points_centered is not None:
@@ -56,7 +61,7 @@ def objective(opt_vars,
     debug_dict['ik_pos_error'] = ik_result.position_error
     debug_dict['ik_cost'] = ik_cost
     cost += ik_cost
-    if ik_result.success:
+    if 0:# ik_result.success:
         reset_reg = np.linalg.norm(ik_result.cspace_position[:-1] - reset_joint_pos[:-1])
         reset_reg = np.clip(reset_reg, 0.0, 3.0)
     else:
@@ -119,7 +124,7 @@ class SubgoalSolver:
         self.reset_joint_pos = reset_joint_pos
         self.last_opt_result = None
         # warmup
-        self._warmup()
+        # self._warmup()
 
     def _warmup(self):
         ee_pose = np.array([0.0, 0.0, 0.0, 0, 0, 0, 1])
@@ -210,8 +215,8 @@ class SubgoalSolver:
         # = setup bounds and initial guess
         # ====================================
         ee_pose = ee_pose.astype(np.float64)
-        ee_pose_homo = T.pose2mat([ee_pose[:3], ee_pose[3:]])
-        ee_pose_euler = np.concatenate([ee_pose[:3], T.quat2euler(ee_pose[3:])])
+        ee_pose_homo = pose2mat([ee_pose[:3], ee_pose[3:]])
+        ee_pose_euler = np.concatenate([ee_pose[:3], quat2euler(ee_pose[3:])])
         # normalize opt variables to [0, 1]
         pos_bounds_min = self.config['bounds_min']
         pos_bounds_max = self.config['bounds_max']
@@ -286,7 +291,7 @@ class SubgoalSolver:
         debug_dict['type'] = 'subgoal_solver'
         # unnormailze
         sol = unnormalize_vars(opt_result.x, og_bounds)
-        sol = np.concatenate([sol[:3], T.euler2quat(sol[3:])])
+        sol = np.concatenate([sol[:3], euler2quat(sol[3:])])
         opt_result = self._check_opt_result(opt_result, debug_dict)
         # cache opt_result for future use if successful
         if opt_result.success:
