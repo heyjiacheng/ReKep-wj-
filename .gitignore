@@ -22,6 +22,7 @@ demo/
 vlm_query/
 data/rgbd/
 data/disp/
+log/
 
 # Distribution / packaging
 .Python
@@ -161,3 +162,4 @@ dmypy.json
 # Mac OS
 .DS_Store
 
+outputs/
