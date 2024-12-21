@@ -98,10 +98,15 @@ def objective(opt_vars,
     if path_constraints is not None and len(path_constraints) > 0:
         path_constraint_cost = 0
         path_violation = []
+        # print('len poses_homo', len(poses_homo))
+        # print('start_idx', start_idx)
+        # print('end_idx', end_idx)
         for pose in poses_homo[start_idx:end_idx]:
             transformed_keypoints = transform_keypoints(pose, keypoints_centered, keypoint_movable_mask)
             for constraint in path_constraints:
                 violation = constraint(transformed_keypoints[0], transformed_keypoints[1:])
+                # print(f"Path constraint violation: {violation}")
+                # import pdb; pdb.set_trace()
                 path_violation.append(violation)
                 path_constraint_cost += np.clip(violation, 0, np.inf)
         path_constraint_cost = 200.0*path_constraint_cost
@@ -131,7 +136,7 @@ class PathSolver:
         self.reset_joint_pos = reset_joint_pos
         self.last_opt_result = None
         # warmup
-        self._warmup()
+        # self._warmup()
 
     def _warmup(self):
         start_pose = np.array([0.0, 0.0, 0.3, 0, 0, 0, 1])
@@ -274,10 +279,12 @@ class PathSolver:
         # ====================================
         start = time.time()
         # use global optimization for the first iteration
+        # import pdb; pdb.set_trace()
         if from_scratch:
             opt_result = dual_annealing(
                 func=objective,
                 bounds=bounds,
+                # bounds=og_bounds,
                 args=aux_args,
                 maxfun=self.config['sampling_maxfun'],
                 x0=init_sol,
@@ -297,6 +304,7 @@ class PathSolver:
                 method='SLSQP',
                 options=self.config['minimizer_options'],
             )
+        # import pdb; pdb.set_trace()
         solve_time = time.time() - start
 
         # ====================================
@@ -313,6 +321,8 @@ class PathSolver:
         debug_dict['type'] = 'path_solver'
         # unnormailze
         sol = unnormalize_vars(opt_result.x, og_bounds)
+        print('sol', sol)
+        # import pdb; pdb.set_trace()
         # add end pose
         poses_euler = np.concatenate([sol.reshape(-1, 6), end_pose[None]], axis=0)
         poses_quat = convert_pose_euler2quat(poses_euler)  # [num_control_points, 7]

@@ -179,15 +179,26 @@ class KeypointProposer:
             # ignore mask that is too large
             if np.mean(binary_mask) > self.config['max_mask_ratio']:
                 continue
+            # if np.mean(binary_mask) < self.config['min_mask_ratio']:
+            #     continue
             # consider only foreground features
             obj_features_flat = features_flat[binary_mask.reshape(-1)]
             feature_pixels = np.argwhere(binary_mask)
-            # TODO 2d cluster or 3d cluster?
-            # reshape?
             feature_points = points[binary_mask.reshape(-1)]
-        
+
+                # 过滤掉无效点 (全0的点)
+            valid_points = ~np.all(feature_points == 0, axis=1)
+            obj_features_flat = obj_features_flat[valid_points]
+            feature_pixels = feature_pixels[valid_points]
+            feature_points = feature_points[valid_points]
+
+            if len(feature_points) == 0:
+                continue
+
             # reduce dimensionality to be less sensitive to noise and texture
             obj_features_flat = obj_features_flat.double()
+            # if torch.isnan(obj_features_flat).any() or torch.isinf(obj_features_flat).any():
+            #     continue
             (u, s, v) = torch.pca_lowrank(obj_features_flat, center=False)
             features_pca = torch.mm(obj_features_flat, v[:, :3])
             features_pca = (features_pca - features_pca.min(0)[0]) / (features_pca.max(0)[0] - features_pca.min(0)[0])

@@ -1,3 +1,25 @@
+"""
+Rekep Vision Module for Real-world Manipulation
+- By Tony Wang, University of Pennsylvania
+
+This module provides vision capabilities for the Rekep robotic manipulation system.
+
+1. SAM2 for object segmentation
+2. Grounding DINO for object detection and recognition 
+3. RealSense depth camera for RGB-D perception
+4. Keypoint proposal generation for manipulation planning
+5. Constraint generation for motion planning
+
+The vision system processes RGB-D images to:
+- Detect and segment objects in the scene
+- Generate keypoints&metadata for VLM / low level control 
+- Create spatial constraints for motion planning
+- Provide visual feedback for manipulation tasks
+
+Note: This module run once in each task of R2D2 experiment.
+Reset after success or failure.
+"""
+
 import os
 import torch
 import numpy as np
@@ -26,7 +48,6 @@ from rekep.perception.gdino import GroundingDINO
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
 import time
 
 def timer_decorator(func):
@@ -37,6 +58,7 @@ def timer_decorator(func):
         print(f"Function {func.__name__} took {end_time - start_time:.2f} seconds to execute")
         return result
     return wrapper
+
 
 
 @timer_decorator
@@ -83,34 +105,49 @@ class R2D2Vision:
 
     @timer_decorator
     def depth_to_pointcloud(self, depth):
-        # TODO: check if this is correct
         intrinsics, depth_scale = self.load_camera_intrinsics()
 
         height, width = depth.shape
         nx = np.linspace(0, width-1, width)
         ny = np.linspace(0, height-1, height)
         u, v = np.meshgrid(nx, ny)
-        x = (u.flatten() - intrinsics.ppx) / intrinsics.fx
-        y = (v.flatten() - intrinsics.ppy) / intrinsics.fy
-
-        z = depth.flatten() * depth_scale
+        
+        # 创建一个与原图像大小相同的空点云
+        points = np.zeros((height * width, 3))
+        
+        # 只处理非零点
+        valid_mask = depth > 0
+        
+        # 计算有效点的3D坐标
+        x = (u[valid_mask].flatten() - intrinsics.ppx) / intrinsics.fx
+        y = (v[valid_mask].flatten() - intrinsics.ppy) / intrinsics.fy
+        z = depth[valid_mask].flatten() * depth_scale
+        
         x = np.multiply(x, z)
         y = np.multiply(y, z)
-    
-        points = np.stack((x, y, z), axis = -1)
-        points = np.nan_to_num(points, nan=0.0)
-        return points    
+
+        # 将有效点放回对应位置
+        valid_indices = np.where(valid_mask.flatten())[0]
+        points[valid_indices] = np.stack((x, y, z), axis=-1)
+
+        return points  # shape: (height * width, 3)
     
     @timer_decorator
     def perform_task(self, instruction,obj_list, data_path):
-        color_path = os.path.join(data_path, 'varied_camera_raw.png')
-        depth_path = os.path.join(data_path, 'varied_camera_depth.npy')
-        
+        if 1:
+            color_path = os.path.join(data_path, 'varied_camera_raw.png')
+            depth_path = os.path.join(data_path, 'varied_camera_depth.npy')
+        else:
+            color_path = os.path.join(data_path, 'fixed_camera_raw.png')
+            depth_path = os.path.join(data_path, 'fixed_camera_depth.npy')
+
+
         print(f"\033[92mDebug: Looking for files at:\033[0m")
         print(f"\033[92mDebug: Color path: {color_path}\033[0m")
         print(f"\033[92mDebug: Depth path: {depth_path}\033[0m")
         
-        rgb = cv2.cvtColor(cv2.imread(color_path), cv2.COLOR_BGR2RGB)
+        bgr = cv2.imread(color_path)
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         depth = np.load(depth_path)
 
         print(f"\033[92mDebug: Input image shape: {rgb.shape}\033[0m") # (480, 640, 3)
@@ -118,7 +155,7 @@ class R2D2Vision:
 
         # copy the rgb and depth file to ./data/r2d2_vision/zed
         os.makedirs('./data/r2d2_vision/zed', exist_ok=True)
-        cv2.imwrite(f'./data/r2d2_vision/zed/color_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.png', rgb)
+        cv2.imwrite(f'./data/r2d2_vision/zed/color_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.png', bgr)
         np.save(f'./data/r2d2_vision/zed/depth_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.npy', depth)
         
         # TODO: add DINOX mode
@@ -132,7 +169,7 @@ class R2D2Vision:
             if isinstance(obj_list, str):
                 obj_list = obj_list.split(',')  # 如果输入是逗号分隔的字符串
             results = gdino.detect_objects(color_path, obj_list)
-            self._show_objects(rgb, results.objects)
+            # self._show_objects(rgb, results.objects)
             boxes = []
             for obj in results.objects:
                 print(f"class: {obj.category}, conf: {obj.score:.2f}, bbox: {obj.bbox}")
@@ -194,21 +231,22 @@ class R2D2Vision:
         plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
         plt.close()
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=False, help='Instruction for the task')
     parser.add_argument('--obj_list', type=str, required=False, help='String List of objects to detect')
-    parser.add_argument('--data_path', type=str, required=False, help='Path to the directory containing color and depth frames')
+    parser. add_argument('--data_path', type=str, required=False, help='Path to the directory containing color and depth frames')
     parser.add_argument('--visualize', action='store_true', help='Visualize the keypoints on the image')
     args = parser.parse_args()
     
     if args.instruction is None:
         # args.instruction = "Put down the green package into drawer."
-        args.instruction = "Put the green package in the drawer, the robot is already grasping the package \
-                            and the package is already aligned with the drawer opening."
+        # args.instruction = "Pour the object in the bowl into the pot."
+        args.instruction = "Place the pasta bag into the drawer, the end-effector is already at the drawer's keypoint, the drawer is already aligned with the pasta bag and at the proper height."
+        # args.instruction = "Pour the object in the bowl into the pot, the end-effector is already at the bowl's keypoint, the bowl is already aligned with the pot and at the proper height."
     if args.data_path is None:
         args.data_path = "/home/franka/R2D2_3dhat/images/current_images"
-
+    # if args.obj_list is None:
+        # args.obj_list = "bowl, pan, robot end_effector"
     main = R2D2Vision(visualize=args.visualize)
     rekep_program_dir = main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path)
     print(f"\033[92mDebug: rekep_program_dir: {rekep_program_dir}\033[0m")

@@ -17,14 +17,22 @@
     - [ ] Plus
         - [ ] better clustering for keypoint extraction
     - [ ] Minus
-        - [ ] multiple stage: bug
+        - [x] multiple stage: bug
         - [ ] ik cost - doensn’t matter
         - [ ] recovery
 - [ ] stage decomposition  
     - store: in robot_state.json
     - load: solely in r2d2_rekep.py
     - question: keypoint following?
-- [ ] Code-as-Monitor, another work with ReKeP as baseline in Omnigibson, pour tea result is 20, wherweas ReKeP official result is ~70%
+- [x] Code-as-Monitor, another work with ReKeP as baseline in Omnigibson, pour tea result is 20, wherweas ReKeP official result is ~70%
+- [ ] path solver, cannnot generate action sequence?
+    - [ ] pdb trace to see optimization
+    - [ ] Reason: the given subgoal constraints are unvalid
+    - [ ] Solution: 
+        - [ ] treat it as ReKep's error
+        - [ ] modify the prompt
+        - [ ] improve environment.py
+        - [ ] hardcode the subgoal constraints? (add a transform to compute from end effector)
 
 ### 2024-11-23
 - [ ] add DINO-X into system

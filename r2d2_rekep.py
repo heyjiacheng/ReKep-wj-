@@ -11,6 +11,7 @@ from rekep.ik_solver import FrankaIKSolver
 from rekep.subgoal_solver import SubgoalSolver
 from rekep.path_solver import PathSolver
 import rekep.transform_utils as T
+from rekep.visualizer import Visualizer
 
 from rekep.utils import (
     bcolors,
@@ -67,7 +68,7 @@ class MainR2D2:
         torch.manual_seed(self.config['seed'])
         torch.cuda.manual_seed(self.config['seed'])
 
-        self.vision = R2D2Vision(visualize=self.visualize)
+        # self.vision = R2D2Vision(visualize=self.visualize)
 
         self.env = R2D2Env(global_config['env'])
         
@@ -78,7 +79,11 @@ class MainR2D2:
         # initialize solvers
         self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, self.env.reset_joint_pos)
         self.path_solver = PathSolver(global_config['path_solver'], ik_solver, self.env.reset_joint_pos)
+        self.visualizer = Visualizer(global_config['visualizer'])
 
+        if visualize:
+            self.visualizer = Visualizer(global_config['visualizer'])
+            self.data_path = "/home/franka/R2D2_3dhat/images/current_images"
 
     @timer_decorator
     def perform_task(self, instruction, obj_list=None, rekep_program_dir=None):
@@ -90,7 +95,8 @@ class MainR2D2:
         data_path = "/home/franka/R2D2_3dhat/images/current_images"
         
         if rekep_program_dir is None:
-            realworld_rekep_program_dir = self.vision.perform_task(instruction, obj_list, data_path, 3)
+            pass
+            # realworld_rekep_program_dir = self.vision.perform_task(instruction, obj_list, data_path, 3)
         else:
             realworld_rekep_program_dir = rekep_program_dir
         # ====================================
@@ -116,17 +122,15 @@ class MainR2D2:
         self.all_actions = []
         # pdb.set_trace()
         # Process each stage sequentially
-        # for stage in range(1, self.program_info['num_stages'] + 1):
         if 1:
             # Read stage from robot state file
             with open('./robot_state.json', 'r') as f:
                 robot_state = json.load(f)
-                stage = robot_state.get('rekep_state', 1)  # Default to stage 1 if not found
-            # stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
-            stage = int(stage)
-            self._update_stage(stage)
-            
-            # Get current state
+                stage = robot_state.get('rekep_stage', 1)  # !!! @Tianyou Default to stage 1 if not found
+            # store robot state in rekep_program_dir
+            with open(os.path.join(rekep_program_dir, f'robot_state_{stage}.json'), 'w') as f:
+                json.dump(robot_state, f, indent=4)
+                 # Get current state
             scene_keypoints = self.env.get_keypoint_positions()
             self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)
             self.curr_ee_pose = self.env.get_ee_pose()  # TODO check, may be constant? 
@@ -134,9 +138,27 @@ class MainR2D2:
             self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size']) # TODO ???
             self.collision_points = self.env.get_collision_points()
             
+            # stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
+            stage = int(stage)
+            if stage > self.program_info['num_stages']:
+                print(f"{bcolors.FAIL}Stage {stage} is out of bounds, skipping\n{bcolors.ENDC}")
+                return
+            self._update_stage(stage)
+            # if self.stage > 1:
+            #     path_constraints = self.constraint_fns[self.stage]['path']
+            #     for constraints in path_constraints:
+            #         violation = constraints(self.keypoints[0], self.keypoints[1:])
+            #         if violation > self.config['constraint_tolerance']:
+            #             # backtrack = True
+            #             print(f"\n\n\nConstraint violation: {violation}\n\n\n")
+            #             break
+       
             # Generate actions for this stage
-            next_subgoal = self._get_next_subgoal(from_scratch=True)
-            next_path = self._get_next_path(next_subgoal, from_scratch=True)
+            next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter)
+            next_path = self._get_next_path(next_subgoal, from_scratch=self.first_iter)
+            self.first_iter = False
+
+
             # pdb.set_trace()
             # Add gripper actions based on stage type
             # True or False from metadata.json
@@ -151,14 +173,24 @@ class MainR2D2:
         # Combine all action sequences
         combined_actions = np.concatenate(self.all_actions, axis=0)
 
-        if 1 or self.stage == self.program_info['num_stages']: 
-            self.env.sleep(2.0)
-            save_path = os.path.join('./outputs', 'action.json')
+        if self.stage <= self.program_info['num_stages']: 
+            # self.env.sleep(2.0)
+            save_path = os.path.join('./outputs', 'action.json') # TODO: save by stage?
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             with open(save_path, 'w') as f:
                 json.dump({"ee_action_seq": combined_actions.tolist(), "stage": stage}, f, indent=4)
-            print(f"{bcolors.OKGREEN}Actions saved to {save_path}\n\n{bcolors.ENDC}")
-            return
 
+            with open(os.path.join(rekep_program_dir, f'stage{stage}_actions.json'), 'w') as f:
+                json.dump({"ee_action_seq": combined_actions.tolist(), "stage": stage}, f, indent=4)
+            print(f"{bcolors.OKGREEN}Actions saved to {save_path}\n and added to {rekep_program_dir}\n{bcolors.ENDC}")
+            return
+        else:
+            print(f"{bcolors.OKGREEN}All stages completed\n\n{bcolors.ENDC}")
+            # TODO: return to reset pose?
+            # self.env.reset()
+            return  
+            
+            return
     def _load_constraints(self, rekep_program_dir):
         """Helper to load all stage constraints"""
         constraint_fns = dict()
@@ -193,12 +225,13 @@ class MainR2D2:
         debug_dict['stage'] = self.stage
         print_opt_debug_dict(debug_dict)
         if self.visualize:
-            self.visualizer.visualize_subgoal(subgoal_pose)
+            self.visualizer.visualize_subgoal(subgoal_pose, self.data_path)
         return subgoal_pose
 
     @timer_decorator
     def _get_next_path(self, next_subgoal, from_scratch):
         # pdb.set_trace()
+        print(f"Start solving path from {self.curr_ee_pose} to {next_subgoal}")
         path_constraints = self.constraint_fns[self.stage]['path']
         path, debug_dict = self.path_solver.solve(self.curr_ee_pose,
                                                     next_subgoal,
@@ -211,8 +244,10 @@ class MainR2D2:
                                                     from_scratch=from_scratch)
         print_opt_debug_dict(debug_dict)
         processed_path = self._process_path(path)
+        
         if self.visualize:
-            self.visualizer.visualize_path(processed_path)
+            self.visualizer.visualize_path(processed_path, self.data_path)
+            
         return processed_path
     
     # TODO: check action sequence
@@ -235,7 +270,6 @@ class MainR2D2:
         return ee_action_seq
 
     def _update_stage(self, stage):
-        # pdb.set_trace()
         # update stage
         self.stage = stage
         self.is_grasp_stage = self.program_info['grasp_keypoints'][self.stage - 1] != -1
@@ -261,6 +295,7 @@ class MainR2D2:
     
     def _execute_release_action(self):
         print("Release action")
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=False, help='Instruction for the task')

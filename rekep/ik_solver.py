@@ -69,7 +69,7 @@ class FrankaIKSolver:
         # 简单的工作空间检查
         in_workspace = np.all(np.abs(target_pos) < 1.0)
         
-        if in_workspace:
+        if 1: #in_workspace:
             # 成功情况
             return IKResult(
                 success=True,

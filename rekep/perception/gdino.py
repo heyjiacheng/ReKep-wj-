@@ -10,11 +10,11 @@ class GroundingDINO:
         config = Config(API_TOKEN)
         self.client = Client(config)
 
-    def detect_objects(self, image_path, prompts):
+    def detect_objects(self, image_path, input_prompts):
         image_url = self.client.upload_file(image_path)
         task = DetectionTask(
             image_url=image_url,
-            prompts=[TextPrompt(text=prompt) for prompt in prompts],
+            prompts=[TextPrompt(text=pt) for pt in input_prompts],
             targets=[getattr(DetectionTarget, target) for target in DETECTION_TARGETS],
             model=getattr(DetectionModel, MODEL),
         )

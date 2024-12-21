@@ -227,6 +227,8 @@ class R2D2Env:
             
     #     # Return mock position and rotation errors
     #     return 0.01, 0.01
+
+    # TODO: future work, not used yet
     def execute_action(
             self,
             action,
@@ -326,6 +328,8 @@ class R2D2Env:
     def is_grasping(self, candidate_obj=None):
         """Check if gripper is grasping"""
         # Could be enhanced with force sensor readings
+        # TODO, how to modify this
+        print("Yes it is grasping")
         return self.gripper_state == 1.0
 
     def get_collision_points(self, noise=True):
@@ -346,7 +350,7 @@ class R2D2Env:
     
     def register_keypoints(self, keypoints):
         """Register keypoints to track"""
-        print(f"Registering keypoints: {keypoints}")
+        print(f"Registering keypoints number: {len(keypoints)}")
         self.keypoints = keypoints
 
     def get_sdf_voxels(self, resolution, exclude_robot=True, exclude_obj_in_hand=True):

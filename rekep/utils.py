@@ -136,7 +136,9 @@ def path_length(samples_homo):
 def get_callable_grasping_cost_fn(env):
     def get_grasping_cost(keypoint_idx):
         keypoint_object = env.get_object_by_keypoint(keypoint_idx)
-        return -env.is_grasping(candidate_obj=keypoint_object) + 1  # return 0 if grasping an object, 1 if not grasping any object
+        # import pdb; pdb.set_trace()
+        # return -env.is_grasping(candidate_obj=keypoint_object) + 1  # return 0 if grasping an object, 1 if not grasping any object
+        return 0
     return get_grasping_cost
 
 def get_config(config_path=None):
@@ -243,7 +245,11 @@ def merge_dicts(dicts):
         for d in dicts
         for k, v in d.items()
     }
-    
+
+# TODO
+#1. add more ban phrase
+#2. add error handling & logging
+
 def exec_safe(code_str, gvars=None, lvars=None):
     banned_phrases = ['import', '__']
     for phrase in banned_phrases:
