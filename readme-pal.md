@@ -11,16 +11,25 @@ Tony Wang @ PAL Lab
 - [x] Put down the green package
 - [ ] Brew a cup of espresso
 
+### Usage:
+In our experiment, we parellel run these module together with DROID Robot OS, AnyGrasp, Co-Tracker etc
+
+```bash
+# keypoint proposal, VLMs constraint generation:
+python r2d2_vision.py
+# keypoint optimization, action sequence generation:
+python r2d2_rekep.py
+```
 ## TODO
 
 ### 2024-12-17
-- [ ] What is different from ReKeP’s own codebase
-    - [ ] Plus
-        - [ ] better clustering for keypoint extraction
-    - [ ] Minus
+- [x] What is different from ReKeP’s own codebase
+    - [x] Plus
+        - [x] better clustering for keypoint extraction
+    - [x] Minus
         - [x] multiple stage: bug
-        - [ ] ik cost - doensn’t matter
-        - [ ] recovery
+        - [x] ik cost - doensn’t matter
+        - [x] recovery
 - [ ] stage decomposition  
     - store: in robot_state.json
     - load: solely in r2d2_rekep.py
