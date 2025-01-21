@@ -1,5 +1,7 @@
 # ReKep Reproduction at GRASP Lab
 
+r2d2_vision，sam2和dinox能跑了，r2d2_rekep需要修改
+
 12/21/2024
 
 By Tony Wang, weclome to contact at: tonyw3@seas.upenn.edu

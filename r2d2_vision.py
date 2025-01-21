@@ -37,8 +37,8 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-SAM2_CKPT =  '/home/franka/ACReKep/model_ckpt/sam2_hiera_small.pt'
-SMA2_CFIG = "./configs/sam2/sam2_hiera_s.yaml"
+SAM2_CKPT =  "./checkpoints/sam2.1_hiera_small.pt"
+SMA2_CFIG = "configs/sam2.1/sam2.1_hiera_s.yaml"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # from rekep.perception.realsense import initialize_realsense
@@ -162,7 +162,7 @@ class R2D2Vision:
 
         elif 0:  # OLD detection mode
             print(f"\033[92mDebug: Manual mask mode\033[0m")
-            sam_model = build_sam2(SMA2_CFIG, SAM2_CKPT).to(device)
+            sam_model = build_sam2(SMA2_CFIG, SAM2_CKPT, device=device)
             self.mask_generator = SAM2ImagePredictor(sam_model)
             self.mask_generator.set_image(rgb)
 
@@ -170,7 +170,7 @@ class R2D2Vision:
             if isinstance(obj_list, str):
                 obj_list = obj_list.split(',')  # 如果输入是逗号分隔的字符串
             results = gdino.detect_objects(color_path, obj_list)
-            # self._show_objects(rgb, results.objects)
+            self._show_objects(rgb, results.objects)
             boxes = []
             for obj in results.objects:
                 print(f"class: {obj.category}, conf: {obj.score:.2f}, bbox: {obj.bbox}")
@@ -240,15 +240,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.instruction is None:
-        args.instruction = "Brew a cup of espresso."
+        args.instruction = "Place the marker on the white cube."
+        # args.instruction = "Brew a cup of espresso."
         # args.instruction = "Put down the green package into drawer."
         # args.instruction = "Pour the object in the bowl into the pot."
         # args.instruction = "Place the pasta bag into the drawer, the end-effector is already at the drawer's keypoint, the drawer is already aligned with the pasta bag and at the proper height."
         # args.instruction = "Pour the object in the bowl into the pot, the end-effector is already at the bowl's keypoint, the bowl is already aligned with the pot and at the proper height."
     if args.data_path is None:
-        args.data_path = "/home/franka/R2D2_3dhat/images/current_images"
-    # if args.obj_list is None:
-        # args.obj_list = "bowl, pan, robot end_effector"
+        args.data_path = "/home/xu/Desktop/workspace/Rekep/realsense_captures"
+    if args.obj_list is None:
+        args.obj_list = "marker pen, white cube, robot end_effector"
     main = R2D2Vision(visualize=args.visualize)
     rekep_program_dir = main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path)
     print(f"\033[92mDebug: rekep_program_dir: {rekep_program_dir}\033[0m")
