@@ -63,7 +63,7 @@ def timer_decorator(func):
 @timer_decorator
 class R2D2Vision:
     @timer_decorator
-    def __init__(self, visualize=False):
+    def __init__(self, visualize):
         global_config = get_config(config_path="./configs/config.yaml")
         self.config = global_config['main']
         self.visualize = visualize
@@ -153,7 +153,7 @@ class R2D2Vision:
         np.save(f'./data/r2d2_vision/zed/depth_{instruction}_{time.strftime("%Y%m%d_%H%M%S")}.npy', depth)
         
         if 1: # Prompt-free Detection mode
-            print(f"\033[92mDebug: Prompt-free Detection mode\033[0m")
+            print(f"\033[92mDebug: Dino-X Detection mode\033[0m")
             gdino = GroundingDINO()
             predictions = gdino.get_dinox(color_path, obj_list)
             bboxes, masks = gdino.visualize_bbox_and_mask(predictions, color_path, './data/')
@@ -203,8 +203,9 @@ class R2D2Vision:
         # ====================================
         keypoints, projected_img = self.keypoint_proposer.get_keypoints(rgb, points, masks)
         print(f'{bcolors.HEADER}Got {len(keypoints)} proposed keypoints{bcolors.ENDC}')
-        if self.visualize:
-            self._show_image(projected_img,rgb)
+        print('self.visualize:',self.visualize)
+        # if self.visualize:
+        self._show_image(projected_img,rgb)
         metadata = {'init_keypoint_positions': keypoints, 'num_keypoints': len(keypoints)}
         rekep_program_dir = self.constraint_generator.generate(projected_img, instruction, metadata)
         print(f'{bcolors.HEADER}Constraints generated and saved in {rekep_program_dir}{bcolors.ENDC}')
@@ -229,7 +230,7 @@ class R2D2Vision:
         plt.imshow(idx_img)
         plt.axis('on')
         plt.title('Annotated Image with Keypoints')
-        plt.savefig('data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
+        plt.savefig('./data/rekep_with_keypoints.png', bbox_inches='tight', dpi=300)
         plt.close()
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -249,7 +250,9 @@ if __name__ == "__main__":
     if args.data_path is None:
         args.data_path = "/home/xu/Desktop/workspace/Rekep/realsense_captures"
     if args.obj_list is None:
-        args.obj_list = "marker pen, white cube, robot end_effector"
+        args.obj_list = "marker pen . white cube . robot gripper"
+    if args.visualize is None:
+        args.visualize = True
     main = R2D2Vision(visualize=args.visualize)
     rekep_program_dir = main.perform_task(instruction=args.instruction, obj_list=args.obj_list, data_path=args.data_path)
     print(f"\033[92mDebug: rekep_program_dir: {rekep_program_dir}\033[0m")
