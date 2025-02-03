@@ -7,13 +7,15 @@ By Tony Wang, weclome to contact at: tonyw3@seas.upenn.edu
 - [x] vision pipeline: ./r2d2_vision.py
 - [x] action pipeline: ./r2d2_rekep.py
 - [x] real world experiments: Please refer to VLM_query/readme.md
+      Notice here we use drawer in the wild, lower than robot platform, increasing task difficulty. 
     - [x] close drawer: 6/10
-    - [x] open drawer: 0/10
-    - [x] place the bag into the drawer: 4/10
+    - [x] open drawer: 0/10                   
+    - [x] place the bag into the drawer: 4/10  
 
 
-> All the experiments are conducted in 'Autonomous' mode.
+> All the experiments are conducted in 'Autonomous' mode. 
 
+Notice: our reproduction is not optimal, there are modules like 'SDF avoidance', 'PointTracker' and 'AnyGRASP' could be embedded into the pipeline. Please refer ReKep's official readme & paper appendix for more implementation info. 
 
 ## ReKep: Spatio-Temporal Reasoning of Relational Keypoint Constraints for Robotic Manipulation
 
