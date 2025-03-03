@@ -19,28 +19,28 @@ class IKResult:
     
     
 # TODO use real IK solver
-class FrankaIKSolver:
-    """Franka IK Solver"""
+class UR5IKSolver:
+    """UR5 IK Solver"""
     def __init__(self, reset_joint_pos, world2robot_homo=None):
-        # DH parameters for Franka (simplified version)
+        # DH parameters for UR5
         self.dh_params = {
-            'd1': 0.333,   # Joint 1
-            'd3': 0.316,   # Joint 3
-            'd5': 0.384,   # Joint 5
-            'd7': 0.107,   # End effector
-            'a7': 0.088,   # End effector
+            # Standard DH parameters for UR5
+            # [a, alpha, d, theta]
+            1: [0,      np.pi/2,  0.089159, 0],  # Joint 1
+            2: [-0.425, 0,        0,        0],  # Joint 2
+            3: [-0.39225, 0,      0,        0],  # Joint 3
+            4: [0,      np.pi/2,  0.10915,  0],  # Joint 4
+            5: [0,      -np.pi/2, 0.09465,  0],  # Joint 5
+            6: [0,      0,        0.0823,   0],  # Joint 6 (end effector)
         }
         
-        # Joint limits (in radians)
+        # Joint limits (in radians) for UR5
         self.joint_limits = {
-            'lower': np.array([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]),
-            'upper': np.array([2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973])
+            'lower': np.array([-2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]),
+            'upper': np.array([2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi])
         }
         
-        # Default home position
         self.reset_joint_pos = reset_joint_pos
-        
-        # Transform from world to robot base
         self.world2robot_homo = world2robot_homo if world2robot_homo is not None else np.eye(4)
 
     def transform_pose(self, pose_homo):
@@ -102,9 +102,9 @@ class FrankaIKSolver:
         return np.eye(4)
 
 # Unit tests
-def test_franka_ik():
+def test_ur5_ik():
     # Create solver
-    solver = FrankaIKSolver()
+    solver = UR5IKSolver()
     
     # Test case 1: Identity pose
     target = np.eye(4)
@@ -212,4 +212,4 @@ class IKSolver:
 
 
 if __name__ == "__main__":
-    test_franka_ik()
+    test_ur5_ik()

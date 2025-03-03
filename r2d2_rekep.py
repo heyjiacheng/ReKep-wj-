@@ -4,15 +4,16 @@ import json
 import os
 import sys
 import pdb 
+from scipy.spatial.transform import Rotation as R
 
 import argparse
 from rekep.environment import R2D2Env
-from rekep.ik_solver import FrankaIKSolver
+from rekep.ik_solver import UR5IKSolver
 from rekep.subgoal_solver import SubgoalSolver
 from rekep.path_solver import PathSolver
 import rekep.transform_utils as T
 from rekep.visualizer import Visualizer
-
+from robotEnv import RobotEnv
 from rekep.utils import (
     bcolors,
     get_config,
@@ -23,7 +24,7 @@ from rekep.utils import (
     print_opt_debug_dict,
 )
 
-from r2d2_vision import R2D2Vision
+# from r2d2_vision import R2D2Vision
 '''
 metadata.json
 {
@@ -70,11 +71,12 @@ class MainR2D2:
 
         # self.vision = R2D2Vision(visualize=self.visualize)
 
+        self.robot_env = RobotEnv()
         self.env = R2D2Env(global_config['env'])
         
-        ik_solver = FrankaIKSolver(
-            reset_joint_pos= self.env.reset_joint_pos,
-            world2robot_homo= self.env.world2robot_homo,
+        ik_solver = UR5IKSolver(
+            reset_joint_pos=self.env.reset_joint_pos,
+            world2robot_homo=self.env.world2robot_homo,
         )
         # initialize solvers
         self.subgoal_solver = SubgoalSolver(global_config['subgoal_solver'], ik_solver, self.env.reset_joint_pos)
@@ -85,14 +87,21 @@ class MainR2D2:
             self.visualizer = Visualizer(global_config['visualizer'])
             self.data_path = "/home/franka/R2D2_3dhat/images/current_images"
 
+        # Update the default reset_joint_pos for UR5 (example values)
+        self.reset_joint_pos = np.array([
+        -0.2331488768206995, 
+        -1.9823530356036585,
+        1.7874808311462402,
+        -1.3757527510272425,
+        -1.559995476399557,
+        -1.7979963461505335])  # UR5 home position
+
     @timer_decorator
     def perform_task(self, instruction, obj_list=None, rekep_program_dir=None):
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================
         # obj_list = ['scissors']
-        
-        data_path = "/home/franka/R2D2_3dhat/images/current_images"
         
         if rekep_program_dir is None:
             pass
@@ -132,9 +141,9 @@ class MainR2D2:
                 json.dump(robot_state, f, indent=4)
                  # Get current state
             scene_keypoints = self.env.get_keypoint_positions()
-            self.keypoints = np.concatenate([[self.env.get_ee_pos()], scene_keypoints], axis=0)
-            self.curr_ee_pose = self.env.get_ee_pose()  # TODO check, may be constant? 
-            self.curr_joint_pos = self.env.get_arm_joint_positions() 
+            self.keypoints = np.concatenate([[self.ur_get_ee_location()], scene_keypoints], axis=0)
+            self.curr_ee_pose = self.ur_get_ee_pose()
+            self.curr_joint_pos = self.ur_get_joint_pos()
             self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size']) # TODO ???
             self.collision_points = self.env.get_collision_points()
             
@@ -189,8 +198,43 @@ class MainR2D2:
             # TODO: return to reset pose?
             # self.env.reset()
             return  
-            
-            return
+
+    def ur_get_joint_pos(self):
+        joint_pos = self.robot_env.robot.get_joint_positions()
+        return joint_pos
+    
+    def ur_get_ee_location(self):
+        ee_pos = self.robot_env.robot.get_tcp_pose()
+        return ee_pos[:3]
+    
+    def ur_get_ee_pose(self):
+        ee_pos = self.robot_env.robot.get_tcp_pose()
+        angles = ee_pos[3:]
+        angles = np.radians(angles)
+        rotation = R.from_euler('xyz', angles)
+        quat = rotation.as_quat()
+        quat = quat.reshape(1, -1)
+        quat = quat[0]
+        return np.concatenate([ee_pos[:3], quat])
+    
+    def ur_move_to_ee_pos(self, target_pos):
+        target_quat = target_pos[3:]
+        rotation = R.from_quat(target_quat)
+        angles_rad = rotation.as_euler('xyz')
+        angles_deg = np.degrees(angles_rad)
+        target_pos = np.concatenate([target_pos[:3], angles_deg])
+        # name each element in target_pos
+        target_pos = {
+            "x": target_pos[0],
+            "y": target_pos[1],
+            "z": target_pos[2],
+            "theta_x": target_pos[3],
+            "theta_y": target_pos[4],
+            "theta_z": target_pos[5]
+        }
+        # self.kinova.move_to_tool_position(target_pos)
+        self.robot_env.step(target_pos,3)
+
     def _load_constraints(self, rekep_program_dir):
         """Helper to load all stage constraints"""
         constraint_fns = dict()
@@ -253,7 +297,6 @@ class MainR2D2:
     # TODO: check action sequence
     @timer_decorator
     def _process_path(self, path):
-        # pdb.set_trace()
         # spline interpolate the path from the current ee pose
         full_control_points = np.concatenate([
             self.curr_ee_pose.reshape(1, -1),
@@ -263,10 +306,11 @@ class MainR2D2:
                                                     self.config['interpolate_pos_step_size'],
                                                     self.config['interpolate_rot_step_size'])
         dense_path = spline_interpolate_poses(full_control_points, num_steps)
-        # add gripper action
-        ee_action_seq = np.zeros((dense_path.shape[0], 8))
-        ee_action_seq[:, :7] = dense_path
-        ee_action_seq[:, 7] = self.env.get_gripper_null_action()
+        
+        # Create action sequence (now with 7 dimensions for 6 joints + gripper)
+        ee_action_seq = np.zeros((dense_path.shape[0], 7))  # Changed from 8 to 7
+        ee_action_seq[:, :6] = dense_path[:, :6]  # Changed from :7 to :6
+        ee_action_seq[:, 6] = self.env.get_gripper_null_action()  # Changed from 7 to 6
         return ee_action_seq
 
     def _update_stage(self, stage):
@@ -277,7 +321,7 @@ class MainR2D2:
         # can only be grasp stage or release stage or none
         assert self.is_grasp_stage + self.is_release_stage <= 1, "Cannot be both grasp and release stage"
         if self.is_grasp_stage:  # ensure gripper is open for grasping stage
-            self.env.open_gripper()
+            self.robot_env.robot.control_gripper(close=False)
         # clear action queue
         self.action_queue = []
         # update keypoint movable mask
@@ -306,7 +350,7 @@ if __name__ == "__main__":
     # args.instruction = "Put the green package in the drawer, the robot is already grasping the package and the package is already aligned with the drawer opening."
     # args.obj_list = ['cloth']
 
-    vlm_query_dir = "/home/franka/R2D2_3dhat/ReKep/vlm_query/"
+    vlm_query_dir = "/home/xu/Desktop/workspace/ReKep-wj-/vlm_query/"
 
     vlm_dirs = [os.path.join(vlm_query_dir, d) for d in os.listdir(vlm_query_dir) 
                 if os.path.isdir(os.path.join(vlm_query_dir, d))]

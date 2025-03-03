@@ -63,16 +63,16 @@ class RobotController:
     def __init__(self):
         self.joint_limits = {
             'position': {
-                'upper': [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],  # Franka真实限制
-                'lower': [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
+                'upper': [2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi],  # UR5 limits
+                'lower': [-2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi, -2*np.pi]
             },
             'velocity': {
-                'upper': [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100],
-                'lower': [-2.1750, -2.1750, -2.1750, -2.1750, -2.6100, -2.6100, -2.6100]
+                'upper': [3.14, 3.14, 3.14, 3.14, 3.14, 3.14],  # UR5 max velocities
+                'lower': [-3.14, -3.14, -3.14, -3.14, -3.14, -3.14]
             }
         }
         
-        self.current_joint_angles = np.zeros(7)
+        self.current_joint_angles = np.zeros(6)  # UR5 has 6 joints
         self.current_ee_pose = np.array([0.5, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0])
         self.current_eef_position = np.array([0.5, 0.0, 0.5]) 
         self.world2robot_homo = np.eye(4)  
@@ -134,7 +134,7 @@ class R2D2Env:
         self.robot_state_path =  Path('./robot_state.json')
         
         self.robot = RobotController()
-        self.reset_joint_pos = np.array([0.5, 0, 0.5, 1, 0, 0, 0])  # Default home position
+        self.reset_joint_pos = np.array([0.5, 0, 0.5, 1, 0, 0])  # Default home position
         self.gripper_state = 1.0  # 1.0 is open, 0.0 is closed
         self.world2robot_homo = np.eye(4)
         print("Robot interface initialized")
@@ -451,7 +451,7 @@ class R2D2Env:
     def compute_ik(self, target_pose):
         """Mock IK solver - 在实际应用中需要替换为真实的IK"""
         # 这里返回一个合理范围内的关节角度
-        return np.zeros(7)  # 7个关节的角度
+        return np.zeros(6)  # 6个关节的角度
 
     def _step(self, action):
         """执行一步动作"""
