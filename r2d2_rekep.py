@@ -5,6 +5,7 @@ import os
 import sys
 import pdb 
 from scipy.spatial.transform import Rotation as R
+import yaml
 
 import argparse
 from rekep.environment import R2D2Env
@@ -141,6 +142,12 @@ class MainR2D2:
                 json.dump(robot_state, f, indent=4)
                  # Get current state
             scene_keypoints = self.env.get_keypoint_positions()
+            print(f"Camera frame keypoints: {scene_keypoints}")
+            
+            # Transform keypoints from camera to world coordinates
+            scene_keypoints = self.transform_keypoints_to_world(scene_keypoints)
+            print(f"World frame keypoints: {scene_keypoints}")
+            
             self.keypoints = np.concatenate([[self.ur_get_ee_location()], scene_keypoints], axis=0)
             self.curr_ee_pose = self.ur_get_ee_pose()
             self.curr_joint_pos = self.ur_get_joint_pos()
@@ -171,11 +178,11 @@ class MainR2D2:
             # pdb.set_trace()
             # Add gripper actions based on stage type
             # True or False from metadata.json
-            # if self.is_grasp_stage: 
-            #     next_path[-1, 7] = self.env.get_gripper_close_action() # Todo aliagn shape?
+            if self.is_grasp_stage: 
+                next_path[-1, 6] = self.env.get_gripper_close_action() # Todo aliagn shape?
                 
-            # elif self.is_release_stage:
-            #     next_path[-1, 7] = self.env.get_gripper_open_action() 
+            elif self.is_release_stage:
+                next_path[-1, 6] = self.env.get_gripper_open_action() 
                 
             self.all_actions.append(next_path)
 
@@ -340,6 +347,118 @@ class MainR2D2:
     def _execute_release_action(self):
         print("Release action")
         
+    def transform_keypoints_to_world(self, keypoints):
+        """
+        将关键点从相机坐标系转换到机器人基坐标系
+        分两步转换：
+        1. 相机坐标系 → end effector坐标系（通过eye-on-hand标定外参）
+        2. end effector坐标系 → 机器人基坐标系（通过当前机械臂正向运动学）
+        """
+        # 转换为numpy数组
+        keypoints = np.array(keypoints)
+        
+        # 第一步：相机坐标系 → end effector坐标系
+        # 加载相机到end effector的外参
+        ee2camera = self.load_camera_extrinsics()  # 这可能是T_camera_ee而不是T_ee_camera
+        
+        # 转换为齐次坐标
+        keypoints_homogeneous = np.hstack((keypoints, np.ones((keypoints.shape[0], 1))))
+        
+        # 第二步：end effector坐标系 → 机器人基坐标系
+        # 获取当前end effector在基坐标系中的位姿（来自正向运动学）
+        ee_pose = self.ur_get_ee_pose()  # [x, y, z, qx, qy, qz, qw]
+        print(f"EE位姿: {ee_pose}")
+        
+        # Convert ee_pose to transformation matrix correctly
+        position = ee_pose[:3]
+        quat = np.array([ee_pose[4], ee_pose[5], ee_pose[6], ee_pose[3]])  # [qx,qy,qz,qw]
+        rotation = R.from_quat(quat).as_matrix()
+        
+        # Apply handedness correction - reverse X and Z axes
+        rot_correct = np.array([
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, 0, -1]
+        ])
+        rotation_corrected = rotation @ rot_correct
+
+        # Create transformation matrix
+        base2ee = np.eye(4)
+        base2ee[:3, :3] = rotation_corrected
+        base2ee[:3, 3] = position
+        
+        # Camera frame
+        camera_frame_incorrect = base2ee @ ee2camera
+
+        # Create camera axes correction matrix
+        # This transforms camera axes according to:
+        # - camera_x becomes camera_z
+        # - camera_y becomes -camera_x
+        # - camera_z becomes -camera_y
+        camera_axes_correction = np.array([
+            [0, 0, 1],  # New x-axis is old z-axis
+            [-1, 0, 0], # New y-axis is negative old x-axis
+            [0, -1, 0]  # New z-axis is negative old y-axis
+        ])# Create camera axes correction matrix
+
+        # Apply the correction to the camera frame rotation part
+        camera_frame = camera_frame_incorrect.copy()
+        camera_frame[:3, :3] = camera_frame_incorrect[:3, :3] @ camera_axes_correction
+
+
+        # 应用变换
+        base_coords_homogeneous = (camera_frame @ keypoints_homogeneous.T).T
+        
+        # 转换为非齐次坐标
+        base_coords = base_coords_homogeneous[:, :3] / base_coords_homogeneous[:, 3, np.newaxis]
+        
+        return base_coords
+
+    def load_camera_intrinsics(self):
+        # D435i default intrinsics
+        class RS_Intrinsics:
+            def __init__(self):
+                self.fx = 391.44  # focal length x
+                self.fy = 391.44  # focal length y
+                self.ppx = 327.62  # principal point x
+                self.ppy = 241.29  # principal point y
+        
+        intrinsics = RS_Intrinsics()
+        depth_scale = 0.001  # D435i default depth scale, 1mm
+        
+        # Convert to matrix format
+        intrinsics_matrix = np.array([
+            [intrinsics.fx, 0, intrinsics.ppx],
+            [0, intrinsics.fy, intrinsics.ppy],
+            [0, 0, 1]
+        ])
+        
+        return intrinsics_matrix, depth_scale
+
+    def load_camera_extrinsics(self):
+        extrinsics_path = '/home/xu/.ros/easy_handeye/easy_handeye_eye_on_hand.yaml'
+        with open(extrinsics_path, 'r') as f:
+            extrinsics_data = yaml.safe_load(f)
+        
+        # Extract transformation parameters
+        qw = extrinsics_data['transformation']['qw']
+        qx = extrinsics_data['transformation']['qx']
+        qy = extrinsics_data['transformation']['qy']
+        qz = extrinsics_data['transformation']['qz']
+        tx = extrinsics_data['transformation']['x']
+        ty = extrinsics_data['transformation']['y']
+        tz = extrinsics_data['transformation']['z']
+        
+        # Create rotation matrix from quaternion
+        rot = R.from_quat([qx, qy, qz, qw]).as_matrix()
+        
+        # Create 4x4 transformation matrix
+        extrinsics = np.eye(4)
+        extrinsics[:3, :3] = rot
+        extrinsics[:3, 3] = [tx, ty, tz]
+        
+        return extrinsics
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--instruction', type=str, required=False, help='Instruction for the task')

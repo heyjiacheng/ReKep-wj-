@@ -5,6 +5,8 @@ import argparse
 import pyrealsense2 as rs
 import supervision as sv
 import cv2
+import yaml
+from scipy.spatial.transform import Rotation as R
 
 from rekep.keypoint_proposal import KeypointProposer
 from rekep.constraint_generation import ConstraintGenerator
@@ -63,10 +65,10 @@ class MainVision:
         # D435i 的默认内参（你可以根据实际情况修改这些值）
         class RS_Intrinsics:
             def __init__(self):
-                self.fx = 386.738  # focal length x
-                self.fy = 386.738  # focal length y
-                self.ppx = 319.5   # principal point x
-                self.ppy = 239.5   # principal point y
+                self.fx = 391.44  # focal length x
+                self.fy = 391.44  # focal length y
+                self.ppx = 327.62   # principal point x
+                self.ppy = 241.29   # principal point y
                 
         intrinsics = RS_Intrinsics()
         depth_scale = 0.001  # D435i默认深度比例，1mm
@@ -75,24 +77,92 @@ class MainVision:
 
     @timer_decorator
     def depth_to_pointcloud(self, depth):
-        # TODO: check if this is correct
+        """
+        Convert depth image to 3D point cloud in robot base frame coordinates
+        
+        Args:
+            depth: Depth image (H, W)
+            
+        Returns:
+            points: 3D point cloud in robot base frame (N, 3)
+        """
+        # Get intrinsics
         intrinsics, depth_scale = self.intrinsics
-
+        
+        # Load extrinsics from handeyecalibration file
+        extrinsics_path = '/home/xu/.ros/easy_handeye/easy_handeye_eye_on_hand.yaml'
+        with open(extrinsics_path, 'r') as f:
+            extrinsics_data = yaml.safe_load(f)
+        
+        # Extract transformation parameters
+        qw = extrinsics_data['transformation']['qw']
+        qx = extrinsics_data['transformation']['qx']
+        qy = extrinsics_data['transformation']['qy']
+        qz = extrinsics_data['transformation']['qz']
+        tx = extrinsics_data['transformation']['x']
+        ty = extrinsics_data['transformation']['y']
+        tz = extrinsics_data['transformation']['z']
+        
+        # Create rotation matrix from quaternion
+        rot = R.from_quat([qx, qy, qz, qw]).as_matrix()
+        
+        # Create 4x4 transformation matrix
+        extrinsics = np.eye(4)
+        extrinsics[:3, :3] = rot
+        extrinsics[:3, 3] = [tx, ty, tz]
+        
+        # Get image dimensions
         height, width = depth.shape
+        
+        # Create pixel coordinate grid
         nx = np.linspace(0, width-1, width)
         ny = np.linspace(0, height-1, height)
         u, v = np.meshgrid(nx, ny)
-        x = (u.flatten() - intrinsics.ppx) / intrinsics.fx
-        y = (v.flatten() - intrinsics.ppy) / intrinsics.fy
-
-        z = depth.flatten() * depth_scale
+        
+        # Convert to normalized camera coordinates
+        x = (u - intrinsics.ppx) / intrinsics.fx
+        y = (v - intrinsics.ppy) / intrinsics.fy
+        
+        # Apply depth
+        z = depth * depth_scale
+        
+        # Multiply by depth to get 3D coordinates in camera frame
         x = np.multiply(x, z)
         y = np.multiply(y, z)
+        
+        # Convert to point format and filter out invalid points
+        valid_mask = (z > 0.01) & (z < 3.0)  # Filter points between 1cm and 3m
+        
+        # Get valid points only
+        x_valid = x[valid_mask].flatten()
+        y_valid = y[valid_mask].flatten()
+        z_valid = z[valid_mask].flatten()
+        
+        # Stack into camera frame coordinates
+        camera_points = np.stack((x_valid, y_valid, z_valid), axis=-1)
+        
+        # Convert to homogeneous coordinates
+        camera_points_homogeneous = np.hstack((camera_points, np.ones((camera_points.shape[0], 1))))
+        
+        # Additional convention conversion (optional, based on your reference code)
+        T_mod = np.array([
+            [1., 0., 0., 0.],
+            [0., -1., 0., 0.],
+            [0., 0., -1., 0.],
+            [0., 0., 0., 1.]
+        ])
+        camera_points_homogeneous = camera_points_homogeneous @ T_mod
+        
+        # Apply extrinsics to convert to robot base frame
+        # Compute inverse of extrinsics (camera to robot transform)
+        extrinsics_inv = np.linalg.inv(extrinsics)
+        world_points_homogeneous = camera_points_homogeneous @ extrinsics_inv.T
+        
+        # Convert back to non-homogeneous coordinates
+        world_points = world_points_homogeneous[:, :3] / world_points_homogeneous[:, 3, np.newaxis]
+        
+        return world_points
 
-    
-        points = np.stack((x, y, z), axis = -1)
-        return points    
-    
     def get_bboxes(self, rgb, obj_list):
         gdino = GroundingDINO()
         rgb_path = 'data/temp_rgb.png' # save rgb to png at data temperarily for upload

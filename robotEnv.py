@@ -34,14 +34,14 @@ class ur5Robot:
             # Get the task space pose (x, y, z, Rx, Ry, Rz)
             task_space_pose = rtde_receive.getActualTCPPose()
             task_space_pose = task_space_pose[:3] + [-val for val in task_space_pose[3:]]
-            print("Task Space Pose (x, y, z, Rx, Ry, Rz):", task_space_pose)
+            # print("Task Space Pose (x, y, z, Rx, Ry, Rz):", task_space_pose)
 
             pos = pose2quat(task_space_pose)
-            print("pos", pos)
+            # print("pos", pos)
 
             # Get the joint space positions (q1, q2, q3, q4, q5, q6)
             joint_space_positions = rtde_receive.getActualQ()
-            print("Joint Space Positions (q1, q2, q3, q4, q5, q6):", joint_space_positions)
+            # print("Joint Space Positions (q1, q2, q3, q4, q5, q6):", joint_space_positions)
 
             return task_space_pose, joint_space_positions
 
