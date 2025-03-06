@@ -224,7 +224,7 @@ def visualize_frames(rekep_program_dir=None):
     
     plt.title('Visualization of Base, EE, Camera Frames and Keypoints')
     plt.tight_layout()
-    plt.savefig('frames_keypoints_visualization.png')
+    # plt.savefig('frames_keypoints_visualization.png')
     plt.show()
 
 def main():

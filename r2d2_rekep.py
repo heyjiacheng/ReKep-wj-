@@ -359,7 +359,7 @@ class MainR2D2:
         
         # 第一步：相机坐标系 → end effector坐标系
         # 加载相机到end effector的外参
-        ee2camera = self.load_camera_extrinsics()  # 这可能是T_camera_ee而不是T_ee_camera
+        ee2camera = self.load_camera_extrinsics()
         
         # 转换为齐次坐标
         keypoints_homogeneous = np.hstack((keypoints, np.ones((keypoints.shape[0], 1))))
