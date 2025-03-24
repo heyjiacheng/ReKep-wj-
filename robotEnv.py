@@ -5,6 +5,7 @@ from ur_env.vacuum_gripper import VacuumGripper
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 from ur_env.rotations import rotvec_2_quat, quat_2_rotvec, pose2rotvec, pose2quat
+import time
 
 class RobotEnv:
     def __init__(self, ip='192.168.1.60'):
@@ -14,7 +15,101 @@ class RobotEnv:
         # 初始化机械臂
         self.robot = ur5Robot(ip)
         
-
+    def execute_action(self, action, precise=False, speed=0.05, acceleration=0.05, position_only=False):
+        """
+        Execute a single action with pose change only (without gripper control)
+        
+        Args:
+            action: List containing position and orientation [x, y, z, rx, ry, rz, gripper]
+            precise: Whether to execute precisely (usually the last action in the queue)
+            speed: Movement speed (default: 0.05 m/s)
+            acceleration: Movement acceleration (default: 0.05 m/s^2)
+            position_only: If True, only change position and keep current orientation
+        
+        Returns:
+            bool: Whether the execution was successful
+        """
+        try:
+            # Validate action format
+            if len(action) < 7:
+                print(f"Error: Invalid action format. Expected [x,y,z,rx,ry,rz,gripper], got {action}")
+                return False
+                
+            # Extract position and orientation (ignore gripper command)
+            position = action[:3]
+            
+            # If position_only is True, get current orientation from robot
+            if position_only:
+                current_pose = self.robot.get_tcp_pose()
+                orientation = current_pose[3:6]
+                print("Position-only movement: keeping current orientation")
+            else:
+                orientation = action[3:6]
+            
+            # Check for invalid values
+            if not all(isinstance(val, (int, float)) for val in position + orientation):
+                print(f"Error: Non-numeric values in position or orientation: {position + orientation}")
+                return False
+                
+            # Create complete pose
+            pose = position + orientation
+            
+            # Use reduced speed and acceleration for precise movements
+            if precise:
+                speed = speed / 2
+                acceleration = acceleration / 2
+                print("Performing precise action")
+            
+            # Execute pose change
+            print(f"Moving to pose: {position}, {orientation}")
+            self.robot.send_pose_to_robot(pose, speed, acceleration)
+            
+            # Allow time for movement to complete
+            self.sleep(0.5)  # Adjust based on movement size
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error performing action: {e}")
+            return False
+            
+    def _execute_grasp_action(self):
+        """
+        Execute a grasp action (close gripper)
+        
+        Returns:
+            bool: Whether the grasp was successful
+        """
+        try:
+            print("Executing grasp action")
+            self.robot.control_gripper(close=True)
+            self.sleep(1.5)  # Wait for gripper to close
+            print("Gripper closed")
+            return True
+        except Exception as e:
+            print(f"Error executing grasp action: {e}")
+            return False
+            
+    def _execute_release_action(self):
+        """
+        Execute a release action (open gripper)
+        
+        Returns:
+            bool: Whether the release was successful
+        """
+        try:
+            print("Executing release action")
+            self.robot.control_gripper(close=False)
+            self.sleep(1.5)  # Wait for gripper to open
+            print("Gripper opened")
+            return True
+        except Exception as e:
+            print(f"Error executing release action: {e}")
+            return False
+    
+    def sleep(self, seconds):
+        """Wait for specified duration"""
+        time.sleep(seconds)
 
 class ur5Robot:
     def __init__(self, ip='192.168.1.60'):

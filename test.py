@@ -60,28 +60,29 @@ def transform_keypoints_to_world(keypoints, ee_pose, ee2camera):
     
     # EE frame with handedness correction
     position = ee_pose[:3]
-    quat = np.array([ee_pose[4], ee_pose[5], ee_pose[6], ee_pose[3]])  # [qx,qy,qz,qw]
+    quat = np.array([ee_pose[3], ee_pose[4], ee_pose[5], ee_pose[6]])  # [qx,qy,qz,qw]
     rotation = R.from_quat(quat).as_matrix()
     
     # Apply handedness correction - reverse X and Z axes
     rot_correct = np.array([
         [-1, 0, 0],
-        [0, 1, 0],
-        [0, 0, -1]
+        [0, -1, 0],
+        [0, 0, 1]
     ])
     rotation_corrected = rotation @ rot_correct
     
-    base2ee = np.eye(4)
-    base2ee[:3, :3] = rotation_corrected
-    base2ee[:3, 3] = position
+    # Original EE transformation matrix (without offset)
+    base2ee_original = np.eye(4)
+    base2ee_original[:3, :3] = rotation_corrected
+    base2ee_original[:3, 3] = position
     
-    # Camera frame
-    camera_frame_incorrect = base2ee @ ee2camera
+    # Camera frame based on original EE position
+    camera_frame_incorrect = base2ee_original @ ee2camera
     
     # Create camera axes correction matrix
     camera_axes_correction = np.array([
         [0, 0, 1],  # New x-axis is old z-axis
-        [-1, 0, 0], # New y-axis is negative old x-axis
+        [-1, 0, 0], # New y-axis is old x-axis
         [0, -1, 0]  # New z-axis is negative old y-axis
     ])
     
@@ -109,15 +110,34 @@ def load_keypoints(rekep_program_dir):
     
     return program_info.get('init_keypoint_positions', [])
 
-def visualize_frames(rekep_program_dir=None):
+def load_action_sequence(action_file_path):
+    """Load action sequence from JSON file"""
+    if not os.path.exists(action_file_path):
+        print(f"Warning: Action file not found at {action_file_path}")
+        return []
+    
+    try:
+        with open(action_file_path, 'r') as f:
+            data = json.load(f)
+        
+        if 'ee_action_seq' not in data:
+            print(f"Warning: Invalid action file format: missing 'ee_action_seq'")
+            return []
+        
+        print(f"Loaded {len(data['ee_action_seq'])} actions from {action_file_path}")
+        return data['ee_action_seq']
+    except Exception as e:
+        print(f"Error loading action sequence: {e}")
+        return []
+
+def visualize_frames(rekep_program_dir=None, action_file_path=None):
     """Visualize the base, EE, and camera coordinate frames with the correct interpretation"""
     # Load camera extrinsics
     extrinsics_path = '/home/xu/.ros/easy_handeye/easy_handeye_eye_on_hand.yaml'
     ee2camera = load_camera_extrinsics(extrinsics_path)
     
     # Get test EE pose
-    ee_pose = np.array([-0.400482217, -0.127933676, 0.458474398, 
-                         -0.0273204457, -0.0000377962955, -0.000260592389, 0.999626692])
+    ee_pose = np.array([-0.30123685, -0.1036492, 0.47639307, -0.99993477, 0.00583679, 0.00884946, -0.00425099])
     
     # Create 3D plot
     fig = plt.figure(figsize=(12, 10))
@@ -128,32 +148,38 @@ def visualize_frames(rekep_program_dir=None):
     
     # EE frame with handedness correction
     position = ee_pose[:3]
-    quat = np.array([ee_pose[4], ee_pose[5], ee_pose[6], ee_pose[3]])  # [qx,qy,qz,qw]
+    quat = np.array([ee_pose[3], ee_pose[4], ee_pose[5], ee_pose[6]])  # [qx,qy,qz,qw]
     rotation = R.from_quat(quat).as_matrix()
     
     # Apply handedness correction - reverse X and Z axes
     rot_correct = np.array([
         [-1, 0, 0],
-        [0, 1, 0],
-        [0, 0, -1]
+        [0, -1, 0],
+        [0, 0, 1]
     ])
     rotation_corrected = rotation @ rot_correct
     
-    base2ee = np.eye(4)
-    base2ee[:3, :3] = rotation_corrected
-    base2ee[:3, 3] = position
+    # Original EE transformation matrix (without offset)
+    base2ee_original = np.eye(4)
+    base2ee_original[:3, :3] = rotation_corrected
+    base2ee_original[:3, 3] = position
     
-    # Camera frame
-    camera_frame_incorrect = base2ee @ ee2camera
+    # Calculate offset along the corrected EE z-axis for gripper
+    z_offset = np.array([0, 0, 0.14])  # 0.14m along z-axis
+    z_offset_world = rotation_corrected @ z_offset
+    
+    # EE frame with gripper offset
+    base2ee_with_gripper = np.eye(4)
+    base2ee_with_gripper[:3, :3] = rotation_corrected
+    base2ee_with_gripper[:3, 3] = position + z_offset_world
+    
+    # Camera frame based on original EE position
+    camera_frame_incorrect = base2ee_original @ ee2camera
     
     # Create camera axes correction matrix
-    # This transforms camera axes according to:
-    # - camera_x becomes camera_z
-    # - camera_y becomes -camera_x
-    # - camera_z becomes -camera_y
     camera_axes_correction = np.array([
         [0, 0, 1],  # New x-axis is old z-axis
-        [-1, 0, 0], # New y-axis is negative old x-axis
+        [-1, 0, 0], # New y-axis is old x-axis
         [0, -1, 0]  # New z-axis is negative old y-axis
     ])
     
@@ -163,8 +189,35 @@ def visualize_frames(rekep_program_dir=None):
     
     # Draw coordinate frames
     draw_coordinate_frame(ax, base_frame, scale=0.1, label='Base')
-    draw_coordinate_frame(ax, base2ee, scale=0.08, label='EE')
+    draw_coordinate_frame(ax, base2ee_original, scale=0.08, label='EE')
+    draw_coordinate_frame(ax, base2ee_with_gripper, scale=0.08, label='EE with Gripper')
     draw_coordinate_frame(ax, camera_frame, scale=0.05, label='Camera')
+    
+    # Load and visualize action sequence if provided
+    if action_file_path:
+        action_sequence = load_action_sequence(action_file_path)
+        if action_sequence:
+            # Extract positions and gripper states
+            positions = np.array([action[:3] for action in action_sequence])
+            gripper_states = np.array([action[6] for action in action_sequence])
+            
+            # Plot trajectory
+            ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], 
+                   'g-', linewidth=2, label='Robot Trajectory')
+            
+            # Plot waypoints
+            for i, (pos, gripper) in enumerate(zip(positions, gripper_states)):
+                # Color based on gripper state (red for closed, green for open)
+                color = 'r' if gripper > 0.5 else 'g'
+                marker = 'o' if gripper > 0.5 else '^'
+                ax.scatter(pos[0], pos[1], pos[2], color=color, s=100, marker=marker)
+                ax.text(pos[0], pos[1], pos[2], f"{i}", color='black', fontsize=10)
+            
+            # Add legend for gripper states
+            ax.scatter([], [], color='r', s=100, marker='o', label='Gripper Closed')
+            ax.scatter([], [], color='g', s=100, marker='^', label='Gripper Open')
+            
+            print(f"Visualized {len(action_sequence)} action waypoints")
     
     # Load and transform keypoints if rekep_program_dir is provided
     if rekep_program_dir:
@@ -194,15 +247,11 @@ def visualize_frames(rekep_program_dir=None):
                 ax.text(kp_cam[0], kp_cam[1], kp_cam[2], f"{i}", color='purple', fontsize=12)
                 ax.text(kp_world[0], kp_world[1], kp_world[2], f"{i}", color='orange', fontsize=12)
     
-    # Set equal aspect ratio
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    
-    # Set limits appropriately
+    # Collect all points for setting plot limits
     all_points = np.vstack([
         base_frame[:3, 3],
-        base2ee[:3, 3],
+        base2ee_original[:3, 3],
+        base2ee_with_gripper[:3, 3],
         camera_frame[:3, 3]
     ])
     
@@ -210,6 +259,16 @@ def visualize_frames(rekep_program_dir=None):
     if rekep_program_dir and 'keypoints_world' in locals():
         all_points = np.vstack([all_points, keypoints_world])
     
+    # Include action trajectory in limits calculation if available
+    if action_file_path and 'positions' in locals() and len(positions) > 0:
+        all_points = np.vstack([all_points, positions])
+    
+    # Set equal aspect ratio
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    
+    # Set limits appropriately
     min_vals = np.min(all_points, axis=0) - 0.1
     max_vals = np.max(all_points, axis=0) + 0.1
     
@@ -222,9 +281,9 @@ def visualize_frames(rekep_program_dir=None):
     # Adjust view angle for better visualization
     ax.view_init(elev=30, azim=45)
     
-    plt.title('Visualization of Base, EE, Camera Frames and Keypoints')
+    plt.title('Visualization of Base, EE, Camera Frames and Action Trajectory')
     plt.tight_layout()
-    # plt.savefig('frames_keypoints_visualization.png')
+    plt.savefig('visualization.png')
     plt.show()
 
 def main():
@@ -232,6 +291,7 @@ def main():
     parser.add_argument('--extrinsics', type=str, default='/home/xu/.ros/easy_handeye/easy_handeye_eye_on_hand.yaml',
                       help='Path to camera extrinsics YAML file')
     parser.add_argument('--rekep_dir', type=str, help='Path to ReKep program directory containing metadata.json')
+    parser.add_argument('--action_file', type=str, help='Path to action.json file containing robot trajectory')
     args = parser.parse_args()
     
     # If rekep_dir is not provided, try to find the most recent directory
@@ -244,7 +304,14 @@ def main():
                 args.rekep_dir = max(vlm_dirs, key=os.path.getmtime)
                 print(f"\033[92mUsing most recent directory: {args.rekep_dir}\033[0m")
     
-    visualize_frames(args.rekep_dir)
+    # If action_file is not provided, try to use the default location
+    if not args.action_file:
+        default_action_file = "./outputs/action.json"
+        if os.path.exists(default_action_file):
+            args.action_file = default_action_file
+            print(f"\033[92mUsing action file: {args.action_file}\033[0m")
+    
+    visualize_frames(args.rekep_dir, args.action_file)
 
 if __name__ == "__main__":
     main()

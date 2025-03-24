@@ -9,7 +9,6 @@ import yaml
 from ur_env.rotations import rotvec_2_quat, quat_2_rotvec, pose2rotvec, pose2quat
 
 import argparse
-
 from rekep.environment import R2D2Env
 from rekep.ik_solver import UR5IKSolver
 from rekep.subgoal_solver import SubgoalSolver
@@ -98,6 +97,9 @@ class MainR2D2:
         -1.3757527510272425,
         -1.559995476399557,
         -1.7979963461505335])  # UR5 home position
+        
+        # Store initial position
+        self.initial_position = None
 
     @timer_decorator
     def perform_task(self, instruction, obj_list=None, rekep_program_dir=None):
@@ -116,6 +118,9 @@ class MainR2D2:
 
     @timer_decorator
     def _execute(self, rekep_program_dir):
+        # Store initial robot position using TCP pose directly
+        self.initial_position = self.robot_env.robot.get_tcp_pose()
+        
         # Load program info and constraints
         with open(os.path.join(rekep_program_dir, 'metadata.json'), 'r') as f:
             self.program_info = json.load(f)
@@ -130,19 +135,10 @@ class MainR2D2:
         self.keypoint_movable_mask = np.zeros(self.program_info['num_keypoints'] + 1, dtype=bool)
         self.keypoint_movable_mask[0] = True  # first keypoint is always the ee, so it's movable
 
-        # Generate action sequences for all stages
-        self.all_actions = []
+        self._update_stage(1)
         # pdb.set_trace()
         # Process each stage sequentially
-        if 1:
-            # Read stage from robot state file
-            with open('./robot_state.json', 'r') as f:
-                robot_state = json.load(f)
-                stage = robot_state.get('rekep_stage', 1)  # !!! @Tianyou Default to stage 1 if not found
-            # store robot state in rekep_program_dir
-            with open(os.path.join(rekep_program_dir, f'robot_state_{stage}.json'), 'w') as f:
-                json.dump(robot_state, f, indent=4)
-                 # Get current state
+        while True:
             scene_keypoints = self.env.get_keypoint_positions()
             print(f"Camera frame keypoints: {scene_keypoints}")
             
@@ -156,84 +152,46 @@ class MainR2D2:
             self.sdf_voxels = self.env.get_sdf_voxels(self.config['sdf_voxel_size']) # TODO ???
             self.collision_points = self.env.get_collision_points()
             
-            # stage = input(f"Enter stage number (1-{self.program_info['num_stages']}): ")
-            stage = int(stage)
-            if stage > self.program_info['num_stages']:
-                print(f"{bcolors.FAIL}Stage {stage} is out of bounds, skipping\n{bcolors.ENDC}")
-                return
-            self._update_stage(stage)
-            # if self.stage > 1:
-            #     path_constraints = self.constraint_fns[self.stage]['path']
-            #     for constraints in path_constraints:
-            #         violation = constraints(self.keypoints[0], self.keypoints[1:])
-            #         if violation > self.config['constraint_tolerance']:
-            #             # backtrack = True
-            #             print(f"\n\n\nConstraint violation: {violation}\n\n\n")
-            #             break
-       
             # Generate actions for this stage
-            next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter, maintain_orientation=True)
-            print(f"Next subgoal: {next_subgoal}")
+            next_subgoal = self._get_next_subgoal(from_scratch=self.first_iter)
             next_path = self._get_next_path(next_subgoal, from_scratch=self.first_iter)
-            print(f"Next path: {next_path}")
             self.first_iter = False
 
-
-            # pdb.set_trace()
-            # Add gripper actions based on stage type
-            # True or False from metadata.json
-            # if self.is_grasp_stage: 
-            #     next_path[-1, 7] = self.env.get_gripper_close_action() # Todo aliagn shape?
+            if self.is_grasp_stage: 
+                next_path[-1, 6] = self.env.get_gripper_close_action()
                 
-            # elif self.is_release_stage:
-            #     next_path[-1, 7] = self.env.get_gripper_open_action() 
-                
-            self.all_actions.append(next_path)
+            elif self.is_release_stage:
+                next_path[-1, 6] = self.env.get_gripper_open_action() 
 
-        # Combine all action sequences
-        combined_actions = np.concatenate(self.all_actions, axis=0)
+            self.action_queue = next_path.tolist()
 
-        # # 计算夹爪偏移量 (在保存到action.json前减去偏移)
-        # for i in range(len(combined_actions)):
-        #     # 获取当前位姿 (x, y, z, qx, qy, qz, qw, gripper)
-        #     pose = combined_actions[i]
-        #     position = pose[:3]
-        #     quat = pose[3:7]  # 四元数 [qx, qy, qz, qw]
-            
-        #     # 从四元数创建旋转矩阵
-        #     rotation_matrix = R.from_quat(quat).as_matrix()
-            
-        #     # 应用手性校正
-        #     rot_correct = np.array([
-        #         [-1, 0, 0],
-        #         [0, -1, 0],
-        #         [0, 0, 1]
-        #     ])
-        #     rotation_corrected = rotation_matrix @ rot_correct
-            
-        #     # 计算沿校正后EE z轴的偏移
-        #     z_offset = np.array([0, 0, 0.16])  # z轴方向0.16m
-        #     z_offset_world = rotation_corrected @ z_offset
-            
-        #     # 从位置中减去偏移量
-        #     combined_actions[i, :3] = position - z_offset_world
-
-        if self.stage <= self.program_info['num_stages']: 
-            # self.env.sleep(2.0)
-            save_path = os.path.join('./outputs', 'action.json') # TODO: save by stage?
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            with open(save_path, 'w') as f:
-                json.dump({"ee_action_seq": combined_actions.tolist(), "stage": stage}, f, indent=4)
-
-            with open(os.path.join(rekep_program_dir, f'stage{stage}_actions.json'), 'w') as f:
-                json.dump({"ee_action_seq": combined_actions.tolist(), "stage": stage}, f, indent=4)
-            print(f"{bcolors.OKGREEN}Actions saved to {save_path}\n and added to {rekep_program_dir}\n{bcolors.ENDC}")
-            return
-        else:
-            print(f"{bcolors.OKGREEN}All stages completed\n\n{bcolors.ENDC}")
-            # TODO: return to reset pose?
-            # self.env.reset()
-            return  
+            # ====================================
+            # = execute
+            # ====================================
+            # determine if we proceed to the next stage
+            first_action = True
+            while len(self.action_queue) > 0:
+                next_action = self.action_queue.pop(0)
+                precise = len(self.action_queue) == 0
+                self.robot_env.execute_action(next_action, precise=precise, position_only=first_action)
+                # limit to position only
+                # first_action = False
+            if len(self.action_queue) == 0:
+                if self.is_grasp_stage:
+                    self.robot_env._execute_grasp_action()
+                elif self.is_release_stage:
+                    self.robot_env._execute_release_action()
+                # if completed, save video and return
+                if self.stage == self.program_info['num_stages']: 
+                    self.env.sleep(2.0)
+                    # save_path = self.env.save_video()
+                    # print(f"{bcolors.OKGREEN}Video saved to {save_path}\n\n{bcolors.ENDC}")
+                    
+                    # Return to initial position after task completion
+                    self._return_to_initial_position()
+                    return
+                # progress to next stage
+                self._update_stage(self.stage + 1)
 
     def ur_get_joint_pos(self):
         joint_pos = self.robot_env.robot.get_joint_positions()
@@ -263,7 +221,7 @@ class MainR2D2:
         return constraint_fns
 
     @timer_decorator
-    def _get_next_subgoal(self, from_scratch, maintain_orientation=True):
+    def _get_next_subgoal(self, from_scratch):
         # pdb.set_trace()
         subgoal_constraints = self.constraint_fns[self.stage]['subgoal']
         path_constraints = self.constraint_fns[self.stage]['path']
@@ -277,11 +235,6 @@ class MainR2D2:
                                                             self.is_grasp_stage,
                                                             self.curr_joint_pos,
                                                             from_scratch=from_scratch)
-        
-        # If maintain_orientation is True, keep the orientation from curr_ee_pose
-        if maintain_orientation:
-            subgoal_pose[3:7] = self.curr_ee_pose[3:7]
-            print("Maintaining end-effector orientation from current pose")
         
         # Apply offset at subgoal generation time
         if self.is_grasp_stage:
@@ -328,7 +281,6 @@ class MainR2D2:
                                                     self.curr_joint_pos,
                                                     from_scratch=from_scratch)
         print_opt_debug_dict(debug_dict)
-        # 插值在这里
         processed_path = self._process_path(path)
         
         if self.visualize:
@@ -350,9 +302,9 @@ class MainR2D2:
         dense_path = spline_interpolate_poses(full_control_points, num_steps)
         
         # Create action sequence (now with 7 dimensions for 6 joints + gripper)
-        ee_action_seq = np.zeros((dense_path.shape[0], 8)) 
-        ee_action_seq[:, :7] = dense_path
-        ee_action_seq[:, 7] = self.env.get_gripper_null_action() 
+        ee_action_seq = np.zeros((dense_path.shape[0], 7))  # Changed from 8 to 7
+        ee_action_seq[:, :6] = dense_path[:, :6]  # Changed from :7 to :6
+        ee_action_seq[:, 6] = self.env.get_gripper_null_action()  # Changed from 7 to 6
         return ee_action_seq
 
     def _update_stage(self, stage):
@@ -404,14 +356,14 @@ class MainR2D2:
         ee_pose = self.ur_get_ee_pose()  # [x, y, z, qx, qy, qz, qw]
         print(f"EE位姿: {ee_pose}")
         
-        quat = np.array([ee_pose[3],ee_pose[4], ee_pose[5], ee_pose[6]])  # [qx,qy,qz,qw]
-        rotation = R.from_quat(quat).as_matrix()  # 使用正确的四元数顺序
+        quat = np.array(ee_pose[3:7])  # [qx,qy,qz,qw]
+        rotation = R.from_quat(quat).as_matrix()
         
         # Apply handedness correction - reverse X and Z axes
         rot_correct = np.array([
             [-1, 0, 0],
             [0, -1, 0],
-            [0, 0, 1]
+            [0, 0, -1]
         ])
         rotation_corrected = rotation @ rot_correct
 
@@ -422,12 +374,12 @@ class MainR2D2:
         
         # Camera frame
         camera_frame_incorrect = base2ee @ ee2camera
-
+        # Create camera axes correction matrix
         camera_axes_correction = np.array([
             [0, 0, 1],  # New x-axis is old z-axis
-            [-1, 0, 0], # New y-axis is old x-axis
+            [1, 0, 0], # New y-axis is old x-axis
             [0, -1, 0]  # New z-axis is negative old y-axis
-    ])
+        ])
 
         # Apply the correction to the camera frame rotation part
         camera_frame = camera_frame_incorrect.copy()
@@ -468,19 +420,17 @@ class MainR2D2:
         with open(extrinsics_path, 'r') as f:
             extrinsics_data = yaml.safe_load(f)
         
-        # 修正四元数顺序：YAML文件中存储的是[w,x,y,z]
+        # Extract transformation parameters
         qw = extrinsics_data['transformation']['qw']
         qx = extrinsics_data['transformation']['qx']
-        qy = extrinsics_data['transformation']['qy'] 
+        qy = extrinsics_data['transformation']['qy']
         qz = extrinsics_data['transformation']['qz']
-        
-        # 转换为Scipy需要的[x,y,z,w]格式
-        rot = R.from_quat([qx, qy, qz, qw]).as_matrix()
-        
-        # Extract transformation parameters
         tx = extrinsics_data['transformation']['x']
         ty = extrinsics_data['transformation']['y']
         tz = extrinsics_data['transformation']['z']
+        
+        # Create rotation matrix from quaternion
+        rot = R.from_quat([qx, qy, qz, qw]).as_matrix()
         
         # Create 4x4 transformation matrix
         extrinsics = np.eye(4)
@@ -488,6 +438,23 @@ class MainR2D2:
         extrinsics[:3, 3] = [tx, ty, tz]
         
         return extrinsics
+
+    def _return_to_initial_position(self):
+        """Return the robot to its initial position after task completion"""
+        if self.initial_position is not None:
+            print(f"{bcolors.OKBLUE}Returning to initial position...{bcolors.ENDC}")
+            
+            # First open the gripper to ensure safe movement
+            self.robot_env._execute_release_action()
+            
+            # Prepare action in the format [x, y, z, rx, ry, rz, gripper]
+            action = self.initial_position + [0]  # 0 for gripper
+            
+            self.robot_env.execute_action(action, precise=True, speed=0.03)
+            
+            print(f"{bcolors.OKGREEN}Robot returned to initial position{bcolors.ENDC}")
+        else:
+            print(f"{bcolors.WARNING}No initial position stored, cannot return{bcolors.ENDC}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
